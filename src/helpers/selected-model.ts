@@ -30,13 +30,13 @@ export const model = groq('openai/gpt-oss-20b');
 // export const model = groq('openai/gpt-oss-120b');
 
 // Anthropic:
-// export const model = anthropic('claude-haiku-4-5');
+// export const model = anthropic('claude-haiku-5-5');
 
 // OpenAI:
 // export const model = openai('gpt-5-mini');
 
 // Gemini:
-// export const model = google('gemini-2.5-flash');
+// export const model = google('gemini-3.5-flash-lite');
 
 // Ollama:
 // export const model = ollama('gpt-oss');
