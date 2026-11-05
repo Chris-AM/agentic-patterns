@@ -10,6 +10,8 @@
 import { generateText, stepCountIs } from 'ai';
 import { createTracer, model } from '../../helpers/index.js';
 import { findCourses } from './tools/course-tool.js';
+import { calculateTool } from './tools/calculate-tool.js';
+
 
 const QUESTION =
   '¿Cuánto costarían juntos el curso de TypeScript y el de Docker ' +
@@ -40,6 +42,7 @@ async function withTools() {
     prompt: QUESTION,
     tools: {
       findCourses,
+      calculateTool,
     },
     // Circuit Breaker
     stopWhen: stepCountIs(6),
