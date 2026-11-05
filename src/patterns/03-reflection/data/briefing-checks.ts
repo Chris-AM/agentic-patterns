@@ -22,7 +22,7 @@ export function auditBriefing(text: string): Check[] {
       passed: /almac[eé]n\s*7|distrito industrial/.test(lower),
     },
     { label: 'Cómplices', passed: lower.includes('killgrave') },
-    { label: 'Recompensa', passed: /250[.,]?000/.test(text) },
+    { label: 'Recompensa', passed: /250[\s.,]?000/.test(text) },
     { label: 'Línea RIESGO:', passed: /^RIESGO:/m.test(text) },
     { label: '≤ 120 palabras', passed: text.trim().split(/\s+/).length <= 120 },
   ];
