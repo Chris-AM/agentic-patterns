@@ -7,65 +7,9 @@
  * Con herramientas, consulta el dato real.
  */
 
-import { generateText, tool, stepCountIs } from 'ai';
-import { z } from 'zod';
+import { generateText, stepCountIs } from 'ai';
 import { createTracer, model } from '../../helpers/index.js';
-
-// ---------------------------------------------------------------------------
-//  LA "BASE DE DATOS" — datos que el modelo no puede conocer
-// ---------------------------------------------------------------------------
-
-type Course = {
-  id: string;
-  title: string;
-  hours: number;
-  priceUSD: number;
-  level: 'basic' | 'intermediate' | 'advanced';
-  students: number;
-};
-
-const COURSE_CATALOG: Course[] = [
-  {
-    id: 'ts-01',
-    title: 'TypeScript desde cero',
-    hours: 22,
-    priceUSD: 19.99,
-    level: 'basic',
-    students: 48_120,
-  },
-  {
-    id: 'nest-02',
-    title: 'NestJS: API REST modular',
-    hours: 31,
-    priceUSD: 24.99,
-    level: 'intermediate',
-    students: 22_450,
-  },
-  {
-    id: 'flu-03',
-    title: 'Flutter: apps multiplataforma',
-    hours: 46,
-    priceUSD: 29.99,
-    level: 'intermediate',
-    students: 61_300,
-  },
-  {
-    id: 'agt-04',
-    title: 'Agentes de IA con TypeScript',
-    hours: 18,
-    priceUSD: 34.99,
-    level: 'advanced',
-    students: 1_890,
-  },
-  {
-    id: 'dkr-05',
-    title: 'Docker para desarrolladores',
-    hours: 14,
-    priceUSD: 17.99,
-    level: 'basic',
-    students: 35_770,
-  },
-];
+import { findCourses } from './tools/course-tool.js';
 
 const QUESTION =
   '¿Cuánto costarían juntos el curso de TypeScript y el de Docker ' +
@@ -87,34 +31,6 @@ async function withoutTools() {
 }
 
 //! ======== Implementar el Patrón TOOL USE
-
-// Tool #1 find courses
-const findCourses = tool({
-  description:
-    'Buscar cursos en el catálogo de DevTalles, por texto, ' +
-    'por título o por nivel. Utilízala siempre antes de responder ' +
-    'cualquier pregunta sobre cursos, precios, cantidad de alumnos. ',
-  inputSchema: z.object({
-    text: z
-      .string()
-      .optional()
-      .describe('Texto a buscar en el título del curso.'),
-    level: z.enum(['basic', 'intermediate', 'advanced']).optional(),
-  }),
-  execute: async ({ text, level }) => {
-    const filteredCourses = COURSE_CATALOG.filter((course) => {
-      const matchesText =
-        !text || course.title.toLowerCase().includes(text.toLowerCase());
-      const matchesLevel = !level || course.level === level;
-      return matchesText && matchesLevel;
-    });
-
-    return {
-      found: filteredCourses.length,
-      courses: filteredCourses,
-    };
-  },
-});
 
 async function withTools() {
   const tracer = createTracer('con-herramientas');
@@ -144,7 +60,7 @@ export async function toolUseMain() {
   const resultA = await withoutTools();
   const resultB = await withTools();
 
-  console.log('\n==== Comparativa ====');
+console.log('\n==== Comparativa ====');
   console.table({
     'Sin herramientas': resultA,
     'Con herramientas': resultB,
