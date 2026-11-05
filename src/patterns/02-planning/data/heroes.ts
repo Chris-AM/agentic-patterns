@@ -14,5 +14,5 @@ export const HEROES: Hero[] = [
   { alias: 'Green Lantern', specialty: 'luz', availableHours: 4 },
   { alias: 'Iron Man', specialty: 'tecnología', availableHours: 5 },
   { alias: 'Jean Grey', specialty: 'telequinesis', availableHours: 3 },
-  // { alias: 'Superman', specialty: 'fuego|luz', availableHours: 2 },
+  { alias: 'Superman', specialty: 'fuego|luz', availableHours: 2 },
 ];
