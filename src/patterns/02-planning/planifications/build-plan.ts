@@ -13,6 +13,7 @@ const planSchema = z.object({
           .describe('¿Por qué es necesario? y ¿Por qué va en esta posición?'),
       })
     )
+    //* IMPORTANTE: valores parametrizables 
     .min(2)
     .max(15)
     .describe('Pasos ordenados. Cada paso resuelve UNA sola cosa'),
