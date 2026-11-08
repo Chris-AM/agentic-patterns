@@ -48,18 +48,18 @@ export const EMPLOYEES: Employee[] = [
     approvalLimitUSD: 100_000,
     managerId: 'EMP-6',
   },
-  // {
-  //   id: 'EMP-6',
-  //   name: 'María López',
-  //   role: 'CEO',
-  //   approvalLimitUSD: 1_000_000,
-  //   managerId: 'EMP-7',
-  // },
-  // {
-  //   id: 'EMP-7',
-  //   name: 'Juan Peña',
-  //   role: 'CEO - Founder',
-  //   approvalLimitUSD: 2_000_000,
-  //   managerId: null,
-  // },
+  {
+    id: 'EMP-6',
+    name: 'María López',
+    role: 'CEO',
+    approvalLimitUSD: 1_000_000,
+    managerId: 'EMP-7',
+  },
+  {
+    id: 'EMP-7',
+    name: 'Juan Peña',
+    role: 'CEO - Founder',
+    approvalLimitUSD: 2_000_000,
+    managerId: null,
+  },
 ];
