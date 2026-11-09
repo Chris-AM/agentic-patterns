@@ -46,34 +46,34 @@ const TOOLS = { geocodeCity, listCityMatches, getWeather };
 // responde. El resultado es coherente, está bien redactado, y habla de
 // una ciudad de Illinois con 18.000 habitantes.
 
-async function withoutReAct() {
-  console.log('\n═══ A) SIN ReAct — una sola pasada ═══\n'.blue);
-  const tracer = createTracer('sin-react');
+// async function withoutReAct() {
+//   console.log('\n═══ A) SIN ReAct — una sola pasada ═══\n'.blue);
+//   const tracer = createTracer('sin-react');
 
-  const { text } = await generateText({
-    model,
-    prompt: QUESTION,
-    tools: TOOLS,
-    stopWhen: stepCountIs(4), // circuit breaker: geocode → weather = 2 acciones.
-    instructions:
-      'Eres un asistente meteorológico. Usa las herramientas para ' +
-      'obtener el dato y responde de inmediato con lo que devuelvan. ' +
-      'No cuestiones los resultados. Responde en español.',
-    onStepEnd: tracer.onStepFinish,
-  });
+//   const { text } = await generateText({
+//     model,
+//     prompt: QUESTION,
+//     tools: TOOLS,
+//     stopWhen: stepCountIs(4), // circuit breaker: geocode → weather = 2 acciones.
+//     instructions:
+//       'Eres un asistente meteorológico. Usa las herramientas para ' +
+//       'obtener el dato y responde de inmediato con lo que devuelvan. ' +
+//       'No cuestiones los resultados. Responde en español.',
+//     onStepEnd: tracer.onStepFinish,
+//   });
 
-  console.log('\n Respuesta:\n'.blue, text.green);
+//   console.log('\n Respuesta:\n'.blue, text.green);
 
-  console.log(
-    (
-      '\n  ⚠️  La respuesta es fluida y probablemente falsa. Fíjate en el' +
-      '\n      campo "warning" del primer resultado: la herramienta AVISÓ' +
-      '\n      de la ambigüedad y nadie lo leyó.'
-    ).yellow
-  );
+//   console.log(
+//     (
+//       '\n  ⚠️  La respuesta es fluida y probablemente falsa. Fíjate en el' +
+//       '\n      campo "warning" del primer resultado: la herramienta AVISÓ' +
+//       '\n      de la ambigüedad y nadie lo leyó.'
+//     ).yellow
+//   );
 
-  return tracer.summary();
-}
+//   return tracer.summary();
+// }
 
 // ---------------------------------------------------------------------------
 // B) CON ReAct — observar, detectar la discrepancia, reformular
@@ -127,12 +127,12 @@ async function withReAct() {
 // ---------------------------------------------------------------------------
 
 export async function reActWeatherMain() {
-  const a = await withoutReAct();
+  // const a = await withoutReAct();
   const b = await withReAct();
 
   console.log('\n═══ COMPARATIVA ═══\n'.blue);
   console.table({
-    'Sin ReAct': a,
+    // 'Sin ReAct': a,
     'Con ReAct': b,
   });
 
