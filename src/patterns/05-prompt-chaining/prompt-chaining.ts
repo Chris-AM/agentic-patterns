@@ -85,10 +85,8 @@ async function withChaining() {
   }
 
   // Fallback determinista
-  if (lengthGate(announcement)) {
-    if (announcement.length > MAX_CHARS) {
-      announcement = `${announcement.slice(0, MAX_CHARS - 3)}...`;
-    }
+  if (announcement.length > MAX_CHARS) {
+    announcement = `${announcement.slice(0, MAX_CHARS - 3)}...`;
   }
 
   console.log(`\n${announcement.green}`);
