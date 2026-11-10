@@ -1,12 +1,11 @@
 import { generateText } from 'ai';
 
 import { createTracer, model } from '../../../helpers/index.js';
-import { executePlan } from './execute.js';
 
 // Fase 3: SINTETIZAR — una sola llamada con todos los resultados
 export async function synthesizeReport(
   task: string,
-  results: ReturnType<typeof executePlan>,
+  results: { step: string; result: unknown }[],
   tracer: ReturnType<typeof createTracer>
 ) {
   const { text } = await generateText({
