@@ -55,68 +55,68 @@ async function withReAct(task: string) {
 // B) PLAN-AND-EXECUTE — plan completo en una llamada, ejecución sin modelo
 // ---------------------------------------------------------------------------
 
-// async function withPlanAndExecute(task: string) {
-//   console.log('\n═══ B) PLAN-AND-EXECUTE ═══\n'.blue);
-//   const tracer = createTracer('plan-and-execute');
+async function withPlanAndExecute(task: string) {
+  console.log('\n═══ B) PLAN-AND-EXECUTE ═══\n'.blue);
+  const tracer = createTracer('plan-and-execute');
 
-//   // Fase 1: PLANIFICAR — una sola llamada, sin herramientas
-//   const plan = await buildPlan(task, tracer);
+  // Fase 1: PLANIFICAR — una sola llamada, sin herramientas
+  const plan = await buildPlan(task, tracer);
 
-//   // TODO: Aquí les dejo el console.log para observar el plan
-//   console.log(`\n Plan (${plan.steps.length} pasos):`.blue);
-//   plan.steps.forEach((step, i) =>
-//     console.log(`   ${i + 1}. ${step.tool}(${step.villain}) — ${step.why}`)
-//   );
+  // TODO: Aquí les dejo el console.log para observar el plan
+  console.log(`\n Plan (${plan.steps.length} pasos):`.blue);
+  plan.steps.forEach((step, i) =>
+    console.log(`   ${i + 1}. ${step.tool}(${step.villain}) — ${step.why}`)
+  );
 
-//   // Fase 2: EJECUTAR — el código recorre el plan. Cero llamadas al modelo.
-//   const results = executePlan(plan);
+  // Fase 2: EJECUTAR — el código recorre el plan. Cero llamadas al modelo.
+  const results = executePlan(plan);
 
-//   console.log('\n Ejecución completada sin consultar al modelo.'.yellow);
+  console.log('\n Ejecución completada sin consultar al modelo.'.yellow);
 
-//   // Fase 3: SINTETIZAR — una sola llamada con todos los resultados
-//   const text = await synthesizeReport(task, results, tracer);
+  // Fase 3: SINTETIZAR — una sola llamada con todos los resultados
+  const text = await synthesizeReport(task, results, tracer);
 
-//   console.log('\n\n Informe:'.blue);
-//   console.log(`\n${text}`.green);
+  console.log('\n\n Informe:'.blue);
+  console.log(`\n${text}`.green);
 
-//   return { ...tracer.summary(), text }; // text
-// }
+  return { ...tracer.summary(), text }; // text
+}
 
 // ---------------------------------------------------------------------------
 // MAIN
 // ---------------------------------------------------------------------------
 
 export async function planAndExecuteMain() {
-  console.log('\n##### TAREA PREDECIBLE #####'.blue);
-  const a = await withReAct(PREDICTABLE_TASK);
+  // console.log('\n##### TAREA PREDECIBLE #####'.blue);
+  // const a = await withReAct(PREDICTABLE_TASK);
   // const b = await withPlanAndExecute(PREDICTABLE_TASK);
 
-  // console.log('\n##### TAREA ADAPTATIVA #####'.blue);
-  // const c = await withReAct(ADAPTIVE_TASK);
-  // console.log('\n Auditoría ReAct:'.blue);
-  // const scoreC = auditReport(c.text);
+  console.log('\n##### TAREA ADAPTATIVA #####'.blue);
+  const c = await withReAct(ADAPTIVE_TASK);
+  console.log('\n Auditoría ReAct:'.blue);
+  const scoreC = auditReport(c.text);
 
-  // const d = await withPlanAndExecute(ADAPTIVE_TASK);
-  // console.log('\n Auditoría Plan-and-Execute:'.blue);
-  // const scoreD = auditReport(d.text);
+  const d = await withPlanAndExecute(ADAPTIVE_TASK);
+  console.log('\n Auditoría Plan-and-Execute:'.blue);
+  const scoreD = auditReport(d.text);
 
   console.log('\n═══ COMPARATIVA ═══\n'.blue);
   console.table({
-    'ReAct (predecible)': { steps: a.steps, totalTokens: a.totalTokens },
+    // 'ReAct (predecible)': { steps: a.steps, totalTokens: a.totalTokens },
     // 'Plan-and-Execute (predecible)': {
     //   steps: b.steps,
     //   totalTokens: b.totalTokens,
     // },
-    // 'ReAct (adaptativa)': {
-    //   steps: c.steps,
-    //   totalTokens: c.totalTokens,
-    //   score: scoreC,
-    // },
-    // 'Plan-and-Execute (adaptativa)': {
-    //   steps: d.steps,
-    //   totalTokens: d.totalTokens,
-    //   score: scoreD,
-    // },
+    'ReAct (adaptativa)': {
+      steps: c.steps,
+      totalTokens: c.totalTokens,
+      score: scoreC,
+    },
+    'Plan-and-Execute (adaptativa)': {
+      steps: d.steps,
+      totalTokens: d.totalTokens,
+      score: scoreD,
+    },
   });
 
   console.log(
