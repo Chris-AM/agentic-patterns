@@ -14,7 +14,13 @@ export const PREDICTABLE_TASK =
  * no se puede saber QUÉ celdas revisar sin leer antes las bitácoras.
  * ReAct lo resuelve; Plan-and-Execute no puede, porque planifica a ciegas.
  */
+//* MEJORA PROPIA: los umbrales son parámetros programados (única fuente de
+//* verdad). El texto de la tarea y el filtro de phases/execute-filtered.ts
+//* los derivan de aquí; el modelo nunca decide el umbral.
+export const MIN_INCIDENTS = 2;
+export const MAX_INTEGRITY = 50;
+
 export const ADAPTIVE_TASK =
   'Revisa la bitácora de Mister Freeze, Killgrave, Mirror Master y ' +
-  'Juggernaut. SOLO para los villanos con 2 o más incidentes, consulta ' +
-  'el estado de su celda e indica si la integridad es inferior a 50.';
+  `Juggernaut. SOLO para los villanos con ${MIN_INCIDENTS} o más incidentes, consulta ` +
+  `el estado de su celda e indica si la integridad es inferior a ${MAX_INTEGRITY}.`;
