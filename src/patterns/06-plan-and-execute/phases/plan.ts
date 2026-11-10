@@ -2,6 +2,7 @@ import { generateText, Output } from 'ai';
 import { z } from 'zod';
 
 import { createTracer, model } from '../../../helpers/index.js';
+import { registry, TOOL_NAMES } from '../tools/registry.js';
 
 /**
  * El plan es una lista de llamadas a herramientas con sus argumentos.
@@ -11,7 +12,7 @@ export const planSchema = z.object({
   steps: z
     .array(
       z.object({
-        tool: z.enum(['getCellStatus', 'getGuardLog']),
+        tool: z.enum(TOOL_NAMES),
         villain: z.string(),
         why: z.string().describe('Qué aporta este paso al informe'),
       })
@@ -34,7 +35,10 @@ export async function buildPlan(
     instructions:
       'Eres el oficial de control de la prisión. NO resuelvas la tarea. ' +
       'Lista todas las consultas necesarias para resolverla, en orden. ' +
-      'Herramientas disponibles: getCellStatus(villain), getGuardLog(villain).',
+      'Herramientas disponibles:\n' +
+      TOOL_NAMES.map(
+        (name) => `- ${name}(villain): ${registry[name].description}`
+      ).join('\n'),
     onStepEnd: tracer.onStepFinish,
   });
 
