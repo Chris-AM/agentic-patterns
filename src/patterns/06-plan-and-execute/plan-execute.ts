@@ -24,6 +24,7 @@ import { createTracer, model } from '../../helpers/index.js';
 import { auditReport } from './data/report-checks.js';
 import { ADAPTIVE_TASK, PREDICTABLE_TASK } from './data/tasks.js';
 import { executePlan } from './phases/execute.js';
+import { executeFilteredPlan } from './phases/execute-filtered.js';
 import { buildPlan } from './phases/plan.js';
 import { synthesizeReport } from './phases/synthesize.js';
 import { prisonTool } from './tools/prison-tools.js';
@@ -83,6 +84,34 @@ async function withPlanAndExecute(task: string) {
 }
 
 // ---------------------------------------------------------------------------
+// D) MEJORA PROPIA — Plan-and-Execute con filtro programado
+// ---------------------------------------------------------------------------
+//* Igual que B, pero la fase 2 usa executeFilteredPlan: la condición
+//* cuantitativa (incidentes, integridad) la evalúa el código con parámetros
+//* programados. Siguen siendo 2 llamadas al modelo (planificar + sintetizar).
+
+async function withPlanAndFilter(task: string) {
+  console.log('\n═══ D) PLAN-AND-EXECUTE + FILTRO PROGRAMADO ═══\n'.blue);
+  const tracer = createTracer('plan-and-filter');
+
+  const plan = await buildPlan(task, tracer);
+
+  console.log(`\n Plan (${plan.steps.length} pasos):`.blue);
+  plan.steps.forEach((step, i) =>
+    console.log(`   ${i + 1}. ${step.tool}(${step.villain}) — ${step.why}`)
+  );
+
+  const results = executeFilteredPlan(plan);
+
+  const text = await synthesizeReport(task, results, tracer);
+
+  console.log('\n\n Informe:'.blue);
+  console.log(`\n${text}`.green);
+
+  return { ...tracer.summary(), text };
+}
+
+// ---------------------------------------------------------------------------
 // MAIN
 // ---------------------------------------------------------------------------
 
@@ -100,6 +129,11 @@ export async function planAndExecuteMain() {
   console.log('\n Auditoría Plan-and-Execute:'.blue);
   const scoreD = auditReport(d.text);
 
+  //* Mejora propia: ronda D con filtro programado.
+  const e = await withPlanAndFilter(ADAPTIVE_TASK);
+  console.log('\n Auditoría Plan-and-Execute + filtro:'.blue);
+  const scoreE = auditReport(e.text);
+
   console.log('\n═══ COMPARATIVA ═══\n'.blue);
   console.table({
     // 'ReAct (predecible)': { steps: a.steps, totalTokens: a.totalTokens },
@@ -116,6 +150,11 @@ export async function planAndExecuteMain() {
       steps: d.steps,
       totalTokens: d.totalTokens,
       score: scoreD,
+    },
+    'P&E + filtro (adaptativa)': {
+      steps: e.steps,
+      totalTokens: e.totalTokens,
+      score: scoreE,
     },
   });
 
