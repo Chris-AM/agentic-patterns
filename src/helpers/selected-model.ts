@@ -26,8 +26,8 @@ import { google } from '@ai-sdk/google';
 import { ollama } from 'ollama-ai-provider-v2';
 
 // Groq:
-// export const model = groq('openai/gpt-oss-20b');
-export const model = groq('openai/gpt-oss-120b');
+export const model = groq('openai/gpt-oss-20b');
+// export const model = groq('openai/gpt-oss-120b');
 
 // Anthropic:
 // export const model = anthropic('claude-haiku-5-5');
@@ -36,7 +36,7 @@ export const model = groq('openai/gpt-oss-120b');
 // export const model = openai('gpt-5-mini');
 
 // Gemini:
-// export const model = google('gemini-4-argon');
+// export const model = google('gemini-3.5-flash-lite');
 
 // Ollama:
 // export const model = ollama('qwen3.5:4b');
