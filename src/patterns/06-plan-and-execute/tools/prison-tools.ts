@@ -1,23 +1,19 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 
-import { getCellStatus, getGuardLog } from '../data/prison.js';
+import { registry, TOOL_NAMES } from './registry.js';
 
 // ---------------------------------------------------------------------------
-// LAS HERRAMIENTAS
+// LAS HERRAMIENTAS — derivadas del registro (las usa ReAct)
 // ---------------------------------------------------------------------------
 
-export const prisonTool = {
-  getCellStatus: tool({
-    description:
-      'Consulta el estado de la celda de un villano (bloque, integridad, última inspección).',
-    inputSchema: z.object({ villain: z.string() }),
-    execute: async ({ villain }) => getCellStatus(villain),
-  }),
-  getGuardLog: tool({
-    description:
-      'Consulta la bitácora de guardias de un villano (entradas e incidentes).',
-    inputSchema: z.object({ villain: z.string() }),
-    execute: async ({ villain }) => getGuardLog(villain),
-  }),
-};
+export const prisonTool = Object.fromEntries(
+  TOOL_NAMES.map((name) => [
+    name,
+    tool({
+      description: registry[name].description,
+      inputSchema: z.object({ villain: z.string() }),
+      execute: async ({ villain }) => registry[name].run(villain),
+    }),
+  ])
+);
