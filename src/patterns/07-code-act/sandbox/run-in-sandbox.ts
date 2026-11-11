@@ -1,9 +1,5 @@
 import vm from 'node:vm';
 
-// TODO(B): desacoplar del caso; recibir `db` por parámetro.
-import { HEROES } from '../data/heroes.js';
-import { HOURS_PER_OPERATION } from '../data/mission.js';
-import { VILLAINS } from '../data/villains.js';
 
 // ---------------------------------------------------------------------------
 // EL SANDBOX — la parte que NO es opcional
@@ -35,16 +31,29 @@ export function deepFreeze<T>(value: T): T {
 //! Obligatorio: el código debe recibir siempre un timeoutMs para 
 //! evitar que el modelo se quede colgado indefinidamente y
 //! terminar con un return
-export function runInSandbox(code: string, timeoutMs = 1_000): SandboxResult {
+// El techo lo exige el código: sin valor por defecto, y 0, negativos,
+// Infinity o NaN lo desactivarían, así que se rechazan.
+function assertTimeout(timeoutMs: number) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new RangeError(
+      `timeoutMs debe ser un número finito mayor que 0 (recibido: ${timeoutMs})`
+    );
+  }
+}
+
+// `db` lo define el caso: el sandbox recibe una copia congelada y el
+// original queda intacto.
+export function runInSandbox(
+  code: string,
+  db: object,
+  timeoutMs: number
+): SandboxResult {
+  assertTimeout(timeoutMs);
   const logs: string[] = [];
   console.log(code.purple);
 
   const sandbox = {
-    db: deepFreeze({
-      villains: structuredClone(VILLAINS),
-      heroes: structuredClone(HEROES),
-      hoursPerOperation: HOURS_PER_OPERATION,
-    }),
+    db: deepFreeze(structuredClone(db)),
     console: {
       log: (...args: unknown[]) =>
         logs.push(args.map((a) => String(a)).join(' ')),
