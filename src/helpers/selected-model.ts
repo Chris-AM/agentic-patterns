@@ -26,8 +26,8 @@ import { google } from '@ai-sdk/google';
 import { ollama } from 'ollama-ai-provider-v2';
 
 // Groq:
-export const model = groq('openai/gpt-oss-20b');
-// export const model = groq('openai/gpt-oss-120b');
+// export const model = groq('openai/gpt-oss-20b');
+export const model = groq('openai/gpt-oss-120b');
 
 // Anthropic:
 // export const model = anthropic('claude-haiku-5-5');
