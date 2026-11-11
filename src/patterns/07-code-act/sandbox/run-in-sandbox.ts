@@ -32,9 +32,12 @@ export function deepFreeze<T>(value: T): T {
   return value;
 }
 
+//! Obligatorio: el código debe recibir siempre un timeoutMs para 
+//! evitar que el modelo se quede colgado indefinidamente y
+//! terminar con un return
 export function runInSandbox(code: string, timeoutMs = 1_000): SandboxResult {
   const logs: string[] = [];
-  // console.log(code.purple);
+  console.log(code.purple);
 
   const sandbox = {
     db: deepFreeze({
