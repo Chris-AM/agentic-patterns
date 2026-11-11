@@ -14,15 +14,20 @@
  * es imposible por construcción.
  */
 
-import { generateText, stepCountIs } from 'ai';
-
-import { createTracer, model } from '../../helpers/index.js';
+import { createTracer } from '../../helpers/index.js';
 import { trace } from 'node:console';
-import { auditCalls, toolNamesOf, type Check } from './data/call-checks.js';
+import { auditCalls, type Check } from './data/call-checks.js';
 import { CALLS } from './data/calls.js';
-import { DEPARTMENTS, FALLBACK, type Department } from './data/departments.js';
+import { DEPARTMENTS, FALLBACK, ROUTER_ROLE } from './data/departments.js';
 import { classify } from './router/classify.js';
-import { openTicket, resendInvoice, sendCatalog } from './tools/department-tools.js';
+import { runSpecialist } from './router/run-specialist.js';
+import { categoriesOf, mergeTools } from './router/specialists.js';
+// Ronda A (comentada): import { generateText, stepCountIs } from 'ai';
+// Ronda A (comentada): import { model, toolNamesOf } from '../../helpers/index.js';
+
+// Presupuesto de pasos por llamada. El mismo en ambas rondas para que la
+// comparación sea justa; el núcleo lo exige, esta instancia define el valor.
+const STEPS_PER_CALL = 3;
 
 // ---------------------------------------------------------------------------
 // A) SIN ROUTER — una sola persona atiende todo
@@ -41,7 +46,9 @@ const GENERALIST_INSTRUCTIONS =
   - Facturas, cobros duplicados, comprobantes de pago.
 */
 
-const ALL_TOOLS = { sendCatalog, openTicket, resendInvoice };
+// Derivado de DEPARTMENTS; mergeTools lanza si dos departamentos comparten una tool.
+const ALL_TOOLS = mergeTools(DEPARTMENTS);
+const TOOL_COUNT = Object.keys(ALL_TOOLS).length;
 
 /* async function withoutRouter() {
   console.log('\n═══ A) SIN ROUTER (un solo operador) ═══\n'.blue);
@@ -57,7 +64,7 @@ const ALL_TOOLS = { sendCatalog, openTicket, resendInvoice };
       instructions: GENERALIST_INSTRUCTIONS,
       prompt: call.text,
       tools: ALL_TOOLS,
-      stopWhen: stepCountIs(3),
+      stopWhen: stepCountIs(STEPS_PER_CALL),
       onStepEnd: tracer.onStepFinish,
     });
 
@@ -76,7 +83,7 @@ const ALL_TOOLS = { sendCatalog, openTicket, resendInvoice };
   console.log(
     (
       '\n  ⚠️  Puede acertar. Pero cada llamada cargó las instrucciones de los ' +
-      `3 departamentos (${GENERALIST_INSTRUCTIONS.length} caracteres) y las 3 tools.\n` +
+      `${Object.keys(DEPARTMENTS).length} departamentos (${GENERALIST_INSTRUCTIONS.length} caracteres) y las ${TOOL_COUNT} tools.\n` +
       '      Con 30 departamentos, ese coste fijo se multiplica por 10.'
     ).yellow
   );
@@ -93,21 +100,23 @@ async function withRouter() {
   const tracer = createTracer('con-router');
   const checks: Check[] = [];
 
-  const categories: Record<Department, string> = Object.fromEntries(
-    Object.entries(DEPARTMENTS).map(([name, d]) => [name, d.description])
-  ) as Record<Department, string>;
+  const router = {
+    role: ROUTER_ROLE,
+    categories: categoriesOf(DEPARTMENTS),
+    fallback: FALLBACK,
+  };
 
   for (const call of CALLS) {
     console.log(`\n ☎️ Llamada #${call.id}: ${call.text}`.blue);
 
     // 1. Clasificar (una sola vez)
-    const decision = await classify(call.text, categories, FALLBACK, tracer);
+    const decision = await classify(call.text, router, tracer);
     console.log(
-      `     Centralita → ${decision.department} · ${decision.reason}`.purple
+      `     Centralita → ${decision.route} · ${decision.reason}`.purple
     );
 
     // Fallback: lo resuelve el código, sin modelo ni herramientas.
-    if (decision.department === FALLBACK.route) {
+    if (decision.route === FALLBACK.route) {
       console.log('     Derivada a una persona (fallback).'.yellow);
       checks.push({
         callId: call.id,
@@ -120,16 +129,11 @@ async function withRouter() {
 
     // 2. Transferir: el departamento solo ve SU instrucción y SU herramienta.
     //    La centralita ya no participa.
-    const department = DEPARTMENTS[decision.department];
-
-    const { text, steps } = await generateText({
-      model,
-      instructions: department.instructions,
-      prompt: call.text,
-      tools: department.tools,
-      stopWhen: stepCountIs(3),
-      onStepEnd: tracer.onStepFinish,
-    });
+    const { text, toolsUsed } = await runSpecialist(
+      DEPARTMENTS[decision.route],
+      call.text,
+      { stepBudget: STEPS_PER_CALL, tracer }
+    );
 
     console.log(` Especialista Respuesta -> ${text.trim()}`.green);
 
@@ -137,8 +141,8 @@ async function withRouter() {
     checks.push({
       callId: call.id,
       expected: call.expected,
-      routedTo: decision.department,
-      toolsUsed: toolNamesOf(steps),
+      routedTo: decision.route,
+      toolsUsed,
     });
   }
 
@@ -151,7 +155,7 @@ async function withRouter() {
   console.log(
     (
       `\n  Cada llamada cargó como mucho ${longest} caracteres y 1 tool ` +
-      `(vs ${GENERALIST_INSTRUCTIONS.length} y 3 del operador único).\n` +
+      `(vs ${GENERALIST_INSTRUCTIONS.length} y ${TOOL_COUNT} del operador único).\n` +
       '  Con 30 departamentos, el coste por llamada NO cambia.'
     ).yellow
   );
