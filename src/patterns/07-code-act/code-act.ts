@@ -27,18 +27,21 @@
  *
  */
 
-import { generateText, tool, stepCountIs } from 'ai';
-import { z } from 'zod';
+import { generateText, stepCountIs } from 'ai';
 
-import { createTracer, model } from '../../helpers/index.js';
-import { MISSION } from './data/mission.js';
+import { createTracer, model, toolResultsOf } from '../../helpers/index.js';
+import { HEROES } from './data/heroes.js';
+import { HOURS_PER_OPERATION, MISSION } from './data/mission.js';
 import { auditPlan, printAudit, type Plan } from './data/plan-checks.js';
-import { extractCode } from './sandbox/extract-code.js';
-import { runInSandbox } from './sandbox/run-in-sandbox.js';
-import { buildAtomicTools } from './tools/atomic-tools.js';
+import { VILLAINS } from './data/villains.js';
+import { buildRunCodeTool, type RunCodeOutput } from './sandbox/run-code-tool.js';
+// Ronda A (comentada): import { buildAtomicTools, planFromSteps } from './tools/atomic-tools.js';
 
 // Presupuesto de pasos de la ronda A (ver el comentario en tools/atomic-tools.ts).
 const STEP_BUDGET = 10;
+// Límites de la ronda B: el núcleo los exige, esta instancia define el valor.
+const CODE_ACT_STEP_BUDGET = 6;
+const SANDBOX_TIMEOUT_MS = 1_000;
 
 // ---------------------------------------------------------------------------
 // A) SIN CODEACT — herramientas atómicas, una acción JSON por dato
@@ -47,12 +50,10 @@ const STEP_BUDGET = 10;
 /* async function withoutCodeAct() {
   console.log('\n═══ A) SIN CODEACT — acciones en JSON ═══\n'.blue);
   const tracer = createTracer('sin-codeact');
-  const atomic = buildAtomicTools();
-
-  await generateText({
+  const result = await generateText({
     model,
     prompt: MISSION,
-    tools: atomic.tools,
+    tools: buildAtomicTools(),
     stopWhen: stepCountIs(STEP_BUDGET),
     instructions:
       'Eres el coordinador del operativo. Responde en español. ' +
@@ -62,7 +63,7 @@ const STEP_BUDGET = 10;
     onStepEnd: tracer.onStepFinish,
   });
 
-  const plan = atomic.toPlan();
+  const plan = planFromSteps(result.steps);
 
   console.log('\n Auditoría:'.blue);
   const score = printAudit(auditPlan(plan));
@@ -86,58 +87,20 @@ async function withCodeAct() {
   console.log('\n═══ B) CON CODEACT — la acción es código ═══\n'.blue);
   const tracer = createTracer('con-codeact');
 
-  let lastPlan: Plan | null = null;
-
-  const runCode = tool({
-    description:
-      'Ejecuta código JavaScript en un sandbox y devuelve lo que retornes. ' +
-      'Dentro dispones de:\n' +
-      '  db.villains → [{ alias, counteredBy, threat }]\n' +
-      '  db.heroes   → [{ alias, specialty, availableHours }]\n' +
-      '  db.hoursPerOperation → number\n' +
-      'Usa `return` para devolver el resultado. Sin await, sin require, ' +
-      'sin acceso a red ni a ficheros.',
-    inputSchema: z.object({
-      code: z
-        .string()
-        .describe('Código JavaScript. Debe de terminar con un return.'),
-    }),
-    execute: async ({ code }) => {
-      const result = runInSandbox(extractCode(code));
-
-      if (!result.ok) {
-        return {
-          ok: false,
-          error: result.error,
-          logs: result.logs,
-          hint: 'El código lanzó una excepción. Corrígelo y vuelve a ejecutar.',
-        };
-      }
-
-      const failed = auditPlan(result.value as Plan)
+  const runCode = buildRunCodeTool({
+    db: { villains: VILLAINS, heroes: HEROES, hoursPerOperation: HOURS_PER_OPERATION },
+    timeoutMs: SANDBOX_TIMEOUT_MS,
+    validate: (value) =>
+      auditPlan(value as Plan)
         .filter((check) => !check.passed)
-        .map((check) => check.label);
-
-      if (failed.length === 0) {
-        lastPlan = result.value as Plan;
-      }
-
-      return {
-        ok: failed.length === 0,
-        logs: result.logs,
-        value: result.value,
-        failedChecks: failed,
-        hint: failed.length
-          ? `El plan NO es válido. Fallan: ${failed.join(' | ')}. ` +
-            'Inspecciona los datos reales antes de asumir nada: ' +
-            'haz un `return db.villains[0]` y mira qué campos trae. ' +
-            'NO declares datos de prueba propios: db ya está cargado.'
-          : 'Plan válido.',
-      };
-    },
+        .map((check) => check.label),
+    failureHint:
+      'Inspecciona los datos reales antes de asumir nada: ' +
+      'haz un `return db.villains[0]` y mira qué campos trae. ' +
+      'NO declares datos de prueba propios: db ya está cargado.',
   });
 
-  await generateText({
+  const result = await generateText({
     model,
     prompt:
       MISSION +
@@ -146,7 +109,7 @@ async function withCodeAct() {
       '{ assignments: { "<alias del héroe>": ["<alias villano>", ...] }, ' +
       'unhandled: ["<alias villano>", ...] }',
     tools: { runCode },
-    stopWhen: stepCountIs(6),
+    stopWhen: stepCountIs(CODE_ACT_STEP_BUDGET),
     instructions:
       'Eres el coordinador del operativo. Responde en español. ' +
       'No razones el reparto villano a villano: escribe el algoritmo y ' +
@@ -158,6 +121,13 @@ async function withCodeAct() {
       'corrígelo y vuelve a ejecutar. No justifiques el resultado.',
     onStepEnd: tracer.onStepFinish,
   });
+
+  // Mejora C: el último plan válido se lee de la traza, sin mutar `lastPlan`.
+  const lastPlan =
+    (toolResultsOf(result.steps, 'runCode')
+      .map((r) => r.output as RunCodeOutput)
+      .filter((output) => output.ok)
+      .at(-1)?.value as Plan | undefined) ?? null;
 
   console.log('\n Plan devuelto por el sandbox:'.blue);
   console.log(JSON.stringify(lastPlan, null, 2));
