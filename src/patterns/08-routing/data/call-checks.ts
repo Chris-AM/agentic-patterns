@@ -1,4 +1,4 @@
-import { DEPARTMENTS, type Department } from './departments.js';
+import { DEPARTMENTS, FALLBACK, type Route } from './departments.js';
 
 // ---------------------------------------------------------------------------
 // EL JUEZ PROGRAMÁTICO — la fuente de verdad del laboratorio
@@ -6,7 +6,7 @@ import { DEPARTMENTS, type Department } from './departments.js';
 
 export type Check = {
   callId: number;
-  expected: Department;
+  expected: Route;
   routedTo: string;
   toolsUsed: string[];
 };
@@ -15,14 +15,22 @@ export type Check = {
  * Determinista. Una llamada está resuelta SOLO si el departamento que la
  * atendió ejecutó la herramienta esperada. Como las herramientas son
  * disjuntas, una transferencia equivocada nunca puede pasar esta prueba.
+ *
+ * Fallback: se resuelve solo si la llamada fue a la ruta humana y no se
+ * ejecutó ninguna herramienta.
  */
+export function isResolved(check: Check) {
+  if (check.expected === FALLBACK.route) {
+    return check.routedTo === FALLBACK.route && check.toolsUsed.length === 0;
+  }
+  return check.toolsUsed.includes(DEPARTMENTS[check.expected].expectedTool);
+}
+
 export function auditCalls(checks: Check[]) {
   let passed = 0;
 
   for (const check of checks) {
-    const ok = check.toolsUsed.includes(
-      DEPARTMENTS[check.expected].expectedTool
-    );
+    const ok = isResolved(check);
     if (ok) passed++;
 
     const mark = ok ? '✓'.green : '✗'.red;

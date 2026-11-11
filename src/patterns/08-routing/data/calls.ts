@@ -1,10 +1,10 @@
-import type { Department } from './departments.js';
+import type { Route } from './departments.js';
 
 // ---------------------------------------------------------------------------
 // LAS LLAMADAS — cada una con su departamento correcto (ground truth)
 // ---------------------------------------------------------------------------
 
-export const CALLS: { id: number; text: string; expected: Department }[] = [
+export const CALLS: { id: number; text: string; expected: Route }[] = [
   {
     id: 1,
     text: 'Quiero saber qué cursos tienen de Flutter y cuánto cuestan.',
@@ -34,5 +34,16 @@ export const CALLS: { id: number; text: string; expected: Department }[] = [
     id: 6,
     text: 'Me cobraron dos veces el mismo curso.',
     expected: 'facturacion',
+  },
+  // Fallback: no son de ningún departamento (agregadas, no vienen del curso).
+  {
+    id: 7,
+    text: 'Hola, tengo una consulta.',
+    expected: 'humano',
+  },
+  {
+    id: 8,
+    text: '¿Venden pizzas a domicilio?',
+    expected: 'humano',
   },
 ];

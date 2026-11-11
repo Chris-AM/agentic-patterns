@@ -33,3 +33,15 @@ export const DEPARTMENTS = {
 } as const;
 
 export type Department = keyof typeof DEPARTMENTS;
+
+/**
+ * Ruta de escape del router: lo ambiguo o fuera de dominio no se fuerza a un
+ * departamento. La atiende una persona, sin modelo ni herramientas.
+ */
+export const FALLBACK = {
+  route: 'humano',
+  description:
+    'Llamadas ambiguas, fuera de los temas anteriores o que piden hablar con una persona.',
+} as const;
+
+export type Route = Department | typeof FALLBACK.route;
