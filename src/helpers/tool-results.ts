@@ -12,3 +12,8 @@ export function toolResultsOf(steps: ReadonlyArray<StepLike>, toolName: string) 
     .flatMap((step) => step.toolResults)
     .filter((result) => result.toolName === toolName);
 }
+
+/** Nombres de las tools que se ejecutaron (no solo invocadas), en orden. */
+export function toolNamesOf(steps: ReadonlyArray<StepLike>) {
+  return steps.flatMap((step) => step.toolResults).map((result) => result.toolName);
+}
