@@ -14,157 +14,15 @@
  * es imposible por construcción.
  */
 
-import { generateText, tool, stepCountIs, Output } from 'ai';
-import { z } from 'zod';
+import { generateText, stepCountIs } from 'ai';
 
 import { createTracer, model } from '../../helpers/index.js';
 import { trace } from 'node:console';
-
-// ---------------------------------------------------------------------------
-// LAS HERRAMIENTAS — una por departamento, disjuntas
-// ---------------------------------------------------------------------------
-
-const sendCatalog = tool({
-  description: 'Envía el catálogo de cursos y precios al cliente. Solo ventas.',
-  inputSchema: z.object({
-    interest: z.string().describe('Tema de interés, ej: "Flutter"'),
-  }),
-  execute: async ({ interest }) => ({ sent: true, interest }),
-});
-
-const openTicket = tool({
-  description:
-    'Abre un ticket de soporte técnico por un problema de acceso o de plataforma.',
-  inputSchema: z.object({
-    issue: z.string(),
-  }),
-  execute: async ({ issue }) => ({
-    ticketId: `TK-${Math.floor(Math.random() * 9000 + 1000)}`,
-    issue,
-  }),
-});
-
-const resendInvoice = tool({
-  description: 'Reenvía o corrige una factura de una compra. Solo facturación.',
-  inputSchema: z.object({
-    reason: z.string(),
-  }),
-  execute: async ({ reason }) => ({
-    invoiceId: `INV-${Math.floor(Math.random() * 9000 + 1000)}`,
-    reason,
-  }),
-});
-
-// ---------------------------------------------------------------------------
-// LOS DEPARTAMENTOS
-// ---------------------------------------------------------------------------
-
-const DEPARTMENTS = {
-  ventas: {
-    description: 'Cursos disponibles, precios, descuentos, promociones.',
-    instructions:
-      'Eres del departamento de ventas de DevTalles. Envía el catálogo con tu ' +
-      'herramienta y confirma en una frase. Responde en español.',
-    tools: { sendCatalog },
-    expectedTool: 'sendCatalog',
-  },
-  soporte: {
-    description:
-      'Problemas de acceso, videos que no cargan, errores de la plataforma.',
-    instructions:
-      'Eres del departamento de soporte técnico de DevTalles. Abre un ticket ' +
-      'con tu herramienta y devuelve su número. Responde en español.',
-    tools: { openTicket },
-    expectedTool: 'openTicket',
-  },
-  facturacion: {
-    description: 'Facturas, cobros duplicados, comprobantes de pago.',
-    instructions:
-      'Eres del departamento de facturación de DevTalles. Reenvía o corrige la ' +
-      'factura con tu herramienta y devuelve su identificador. Responde en español.',
-    tools: { resendInvoice },
-    expectedTool: 'resendInvoice',
-  },
-} as const;
-
-type Department = keyof typeof DEPARTMENTS;
-
-// ---------------------------------------------------------------------------
-// LAS LLAMADAS — cada una con su departamento correcto (ground truth)
-// ---------------------------------------------------------------------------
-
-const CALLS: { id: number; text: string; expected: Department }[] = [
-  {
-    id: 1,
-    text: 'Quiero saber qué cursos tienen de Flutter y cuánto cuestan.',
-    expected: 'ventas',
-  },
-  {
-    id: 2,
-    text: 'No puedo entrar a mi cuenta, dice contraseña incorrecta.',
-    expected: 'soporte',
-  },
-  {
-    id: 3,
-    text: 'Necesito la factura de mi compra de agosto para mi contador.',
-    expected: 'facturacion',
-  },
-  {
-    id: 4,
-    text: 'El video 14 del curso de NestJS no carga.',
-    expected: 'soporte',
-  },
-  {
-    id: 5,
-    text: '¿Hacen descuento para un equipo de 10 personas?',
-    expected: 'ventas',
-  },
-  {
-    id: 6,
-    text: 'Me cobraron dos veces el mismo curso.',
-    expected: 'facturacion',
-  },
-];
-
-// ---------------------------------------------------------------------------
-// EL JUEZ PROGRAMÁTICO — la fuente de verdad del laboratorio
-// ---------------------------------------------------------------------------
-
-type Check = {
-  callId: number;
-  expected: Department;
-  routedTo: string;
-  toolsUsed: string[];
-};
-
-/**
- * Determinista. Una llamada está resuelta SOLO si el departamento que la
- * atendió ejecutó la herramienta esperada. Como las herramientas son
- * disjuntas, una transferencia equivocada nunca puede pasar esta prueba.
- */
-function auditCalls(checks: Check[]) {
-  let passed = 0;
-
-  for (const check of checks) {
-    const ok = check.toolsUsed.includes(
-      DEPARTMENTS[check.expected].expectedTool
-    );
-    if (ok) passed++;
-
-    const mark = ok ? '✓'.green : '✗'.red;
-    console.log(
-      `     ${mark} llamada #${check.callId} → ${check.routedTo} ` +
-        `(esperado: ${check.expected}) · tools: [${check.toolsUsed.join(', ')}]`
-    );
-  }
-
-  console.log(`     → ${passed}/${checks.length} llamadas resueltas`.blue);
-  return `${passed}/${checks.length}`;
-}
-
-function toolNamesOf(steps: { toolCalls: { toolName: string }[] }[]) {
-  return steps.flatMap((step) => step.toolCalls.map((call) => call.toolName));
-}
+import { auditCalls, toolNamesOf, type Check } from './data/call-checks.js';
+import { CALLS } from './data/calls.js';
+import { DEPARTMENTS, FALLBACK, type Department } from './data/departments.js';
+import { classify } from './router/classify.js';
+import { openTicket, resendInvoice, sendCatalog } from './tools/department-tools.js';
 
 // ---------------------------------------------------------------------------
 // A) SIN ROUTER — una sola persona atiende todo
@@ -185,7 +43,7 @@ const GENERALIST_INSTRUCTIONS =
 
 const ALL_TOOLS = { sendCatalog, openTicket, resendInvoice };
 
-async function withoutRouter() {
+/* async function withoutRouter() {
   console.log('\n═══ A) SIN ROUTER (un solo operador) ═══\n'.blue);
   const tracer = createTracer('sin-router');
   const checks: Check[] = [];
@@ -225,41 +83,10 @@ async function withoutRouter() {
 
   return { ...tracer.summary(), accuracy };
 }
-
+ */
 // ---------------------------------------------------------------------------
 // B) CON ROUTER — clasificar una vez, transferir, fin
 // ---------------------------------------------------------------------------
-
-/**
- * El router: prompt mínimo, salida estructurada, cero herramientas.
- */
-async function classify<T extends string>(
-  callText: string,
-  categories: Record<T, string>,
-  tracer: ReturnType<typeof createTracer>
-) {
-  const names = Object.keys(categories) as [T, ...T[]];
-
-  const { output } = await generateText({
-    model,
-    output: Output.object({
-      schema: z.object({
-        department: z.enum(names),
-        reason: z.string().describe('Una frase del por qué'),
-      }),
-    }),
-    instructions:
-      'Eres un centralista. Transfiere la llamada a UN solo departamento: \n' +
-      Object.entries(categories)
-        .map(([name, description]) => ` - ${name}: ${description}`)
-        .join('\n'),
-
-    prompt: callText,
-    onStepEnd: tracer.onStepFinish,
-  });
-
-  return output;
-}
 
 async function withRouter() {
   console.log('\n═══ B) CON ROUTER ═══\n'.blue);
@@ -274,10 +101,22 @@ async function withRouter() {
     console.log(`\n ☎️ Llamada #${call.id}: ${call.text}`.blue);
 
     // 1. Clasificar (una sola vez)
-    const decision = await classify(call.text, categories, tracer);
+    const decision = await classify(call.text, categories, FALLBACK, tracer);
     console.log(
       `     Centralita → ${decision.department} · ${decision.reason}`.purple
     );
+
+    // Fallback: lo resuelve el código, sin modelo ni herramientas.
+    if (decision.department === FALLBACK.route) {
+      console.log('     Derivada a una persona (fallback).'.yellow);
+      checks.push({
+        callId: call.id,
+        expected: call.expected,
+        routedTo: FALLBACK.route,
+        toolsUsed: [],
+      });
+      continue;
+    }
 
     // 2. Transferir: el departamento solo ve SU instrucción y SU herramienta.
     //    La centralita ya no participa.
