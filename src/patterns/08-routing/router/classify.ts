@@ -1,26 +1,25 @@
 import { generateText, Output } from 'ai';
 
 import { createTracer, model } from '../../../helpers/index.js';
-import { buildRouteSchema, routerInstructions, type Fallback } from './route-schema.js';
+import { buildRouteSchema, routerInstructions, type RouterConfig } from './route-schema.js';
 
 /**
  * El router: prompt mínimo, salida estructurada, cero herramientas.
  * El fallback es obligatorio: el router nunca queda forzado a una categoría.
  */
 export async function classify<T extends string, F extends string>(
-  callText: string,
-  categories: Record<T, string>,
-  fallback: Fallback<F>,
+  text: string,
+  router: RouterConfig<T, F>,
   tracer: ReturnType<typeof createTracer>
 ) {
   const { output } = await generateText({
     model,
     output: Output.object({
-      schema: buildRouteSchema(categories, fallback),
+      schema: buildRouteSchema(router),
     }),
-    instructions: routerInstructions(categories, fallback),
+    instructions: routerInstructions(router),
 
-    prompt: callText,
+    prompt: text,
     onStepEnd: tracer.onStepFinish,
   });
 

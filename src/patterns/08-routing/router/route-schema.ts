@@ -1,19 +1,27 @@
 import { z } from 'zod';
 
 // ---------------------------------------------------------------------------
-// FALLBACK — el router siempre tiene una salida para lo que no calza
+// CONFIGURACIÓN DEL ROUTER — la define la instancia, la verifica el núcleo
 // ---------------------------------------------------------------------------
 /**
- * Sin fallback, `z.enum` obliga a elegir una categoría aunque la llamada sea
- * ambigua o fuera de dominio. El núcleo exige que exista una ruta de escape;
- * la instancia define su nombre y su descripción.
+ * Sin fallback, `z.enum` obliga a elegir una categoría aunque el mensaje sea
+ * ambiguo o fuera de dominio. El núcleo exige que exista una ruta de escape;
+ * la instancia define su nombre, su descripción y el rol del router.
  */
 export type Fallback<F extends string> = { route: F; description: string };
 
-export function buildRouteSchema<T extends string, F extends string>(
-  categories: Record<T, string>,
-  fallback: Fallback<F>
-) {
+export type RouterConfig<T extends string, F extends string> = {
+  /** Quién es el router en esta instancia (centralita, recepción, mesa de ayuda…). */
+  role: string;
+  /** Rutas disponibles → descripción. Deben ser disjuntas. */
+  categories: Record<T, string>;
+  fallback: Fallback<F>;
+};
+
+export function buildRouteSchema<T extends string, F extends string>({
+  categories,
+  fallback,
+}: RouterConfig<T, F>) {
   const names = Object.keys(categories) as (T | F)[];
 
   if (names.includes(fallback.route)) {
@@ -25,21 +33,22 @@ export function buildRouteSchema<T extends string, F extends string>(
   const routes: (T | F)[] = [...names, fallback.route];
 
   return z.object({
-    department: z.enum(routes as [T | F, ...(T | F)[]]),
+    route: z.enum(routes as [T | F, ...(T | F)[]]),
     reason: z.string().describe('Una frase del por qué'),
   });
 }
 
-export function routerInstructions<T extends string, F extends string>(
-  categories: Record<T, string>,
-  fallback: Fallback<F>
-) {
+export function routerInstructions<T extends string, F extends string>({
+  role,
+  categories,
+  fallback,
+}: RouterConfig<T, F>) {
   return (
-    'Eres un centralista. Transfiere la llamada a UN solo departamento: \n' +
+    `${role}\nElige UNA sola ruta:\n` +
     Object.entries<string>(categories)
       .map(([name, description]) => ` - ${name}: ${description}`)
       .join('\n') +
     `\n - ${fallback.route}: ${fallback.description}` +
-    `\nSi la llamada no encaja con claridad en un solo departamento, elige "${fallback.route}".`
+    `\nSi el mensaje no encaja con claridad en una sola ruta, elige "${fallback.route}".`
   );
 }
