@@ -67,7 +67,9 @@ export function runInSandbox(
     // vm.Script crea un objeto script compilado a partir del código fuente proporcionado.
     // Permite luego ejecutar ese código en un contexto seguro (sandbox) con runInContext.
     // Aquí, envolvemos el código del usuario/modelo en una función autoinvocada para permitir "return".
-    const script = new vm.Script(`(function () {\n${code}\n})()`);
+    // 'use strict': sin modo estricto, escribir sobre un dato congelado falla en
+    // silencio y el modelo no se entera. En estricto lanza un error visible.
+    const script = new vm.Script(`(function () {\n'use strict';\n${code}\n})()`);
     const value = script.runInContext(context, { timeout: timeoutMs });
 
     return { ok: true, value, logs };

@@ -26,6 +26,12 @@ test('el código no puede mutar `db` ni los datos originales', () => {
   assert.equal(Object.isFrozen(original), false, 'el original no debe quedar congelado');
 });
 
+test('modo estricto: escribir sobre datos congelados lanza error visible', () => {
+  const result = runInSandbox('db.items[0] = 99; return db.items[0];', { items: [1] }, TIMEOUT_MS);
+  assert.equal(result.ok, false);
+  assert.match(result.error ?? '', /read only/);
+});
+
 test('el timeout es obligatorio: rechaza valores que desactivan el techo', () => {
   for (const invalid of [0, -1, Number.POSITIVE_INFINITY, Number.NaN]) {
     assert.throws(() => runInSandbox('return 1;', {}, invalid), RangeError, String(invalid));
