@@ -1,6 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 
+import { toolResultsOf } from '../../../helpers/tool-results.js';
 import { HEROES } from '../data/heroes.js';
 import type { Plan } from '../data/plan-checks.js';
 import { VILLAINS } from '../data/villains.js';
@@ -30,19 +31,11 @@ import { VILLAINS } from '../data/villains.js';
  *
  * Provee:
  *   - Las tres "herramientas" mínimas que el modelo puede invocar (con restricciones de acceso/economía de pasos).
- *   - Un mecanismo (toPlan) para reconstruir a posteriori el plan generado, en base a las asignaciones realizadas.
+ *   - El plan ya no se acumula aquí: se reconstruye desde la traza con planFromSteps (mejora C).
  *
  * Esto es clave para ilustrar las limitaciones del JSON puro frente al enfoque code-act.
  */
 export function buildAtomicTools() {
-  // Lista de asignaciones realizadas por el modelo, usada para reconstruir el plan.
-  const collected: Array<{ hero: string; villain: string }> = [];
-  // [
-  //   { hero: "Iron Man", villain: "Thanos" },
-  //   { hero: "Spider-Man", villain: "Mysterio" },
-  //   { hero: "Captain America", villain: "Red Skull" },
-  // ]
-
   // Herramienta para obtener villanos de a uno, sólo avanzando con el cursor previo.
   const getNextVillain = tool({
     description:
@@ -86,32 +79,54 @@ export function buildAtomicTools() {
   });
 
   // Herramienta para registrar la asignación de un héroe a un villano.
+  // Mejora C: no muta estado externo. Valida y devuelve un valor; el registro
+  // queda en la traza (result.steps), que es la única fuente de verdad.
   const assignHero = tool({
     description: 'Registra la asignación de UN villano a UN héroe.',
     inputSchema: z.object({
       heroAlias: z.string(),
       villainAlias: z.string(),
     }),
-    execute: async ({ heroAlias, villainAlias }) => {
-      collected.push({ hero: heroAlias, villain: villainAlias });
-      return { registered: true, total: collected.length };
-    },
+    execute: async ({ heroAlias, villainAlias }) =>
+      validateAssignment(heroAlias, villainAlias),
   });
 
-  // Expone las herramientas para el agente y el método para reconstruir el plan final.
-  return {
-    tools: { getNextVillain, getNextHero, assignHero },
-    // El objetivo de este método toPlan es reconstruir el "plan" final a partir de las asignaciones registradas en el arreglo `collected`.
-    // Recorre todas las entradas de asignaciones y agrupa los villanos asignados a cada héroe en un objeto.
-    // Devuelve un objeto con dicha agrupación y un array vacío para "unhandled".
-    toPlan(): Plan {
-      const assignments: Record<string, string[]> = {};
+  return { getNextVillain, getNextHero, assignHero };
+}
 
-      for (const entry of collected) {
-        (assignments[entry.hero] ??= []).push(entry.villain);
-      }
+/** Rechaza alias inventados en el momento de la llamada, no recién en la auditoría. */
+export function validateAssignment(heroAlias: string, villainAlias: string) {
+  if (!HEROES.some((hero) => hero.alias === heroAlias)) {
+    return { registered: false, error: `No existe el héroe "${heroAlias}".` };
+  }
+  if (!VILLAINS.some((villain) => villain.alias === villainAlias)) {
+    return { registered: false, error: `No existe el villano "${villainAlias}".` };
+  }
+  return { registered: true };
+}
 
-      return { assignments, unhandled: [] };
-    },
-  };
+/**
+ * Reconstruye el plan a partir de la traza (reemplaza a toPlan + collected).
+ * Solo cuenta las asignaciones aceptadas y la primera por villano, así un
+ * reintento de la misma llamada no duplica la asignación.
+ */
+export function planFromSteps(
+  steps: Parameters<typeof toolResultsOf>[0]
+): Plan {
+  const assignments: Record<string, string[]> = {};
+  const seen = new Set<string>();
+
+  for (const { input, output } of toolResultsOf(steps, 'assignHero')) {
+    const { heroAlias, villainAlias } = input as {
+      heroAlias: string;
+      villainAlias: string;
+    };
+    if (!(output as { registered: boolean }).registered) continue;
+    if (seen.has(villainAlias)) continue;
+
+    seen.add(villainAlias);
+    (assignments[heroAlias] ??= []).push(villainAlias);
+  }
+
+  return { assignments, unhandled: [] };
 }
