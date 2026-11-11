@@ -1,4 +1,4 @@
-import { DEPARTMENTS, FALLBACK, type Route } from './departments.js';
+import { expectedToolOf, FALLBACK, type Route } from './departments.js';
 
 // ---------------------------------------------------------------------------
 // EL JUEZ PROGRAMÁTICO — la fuente de verdad del laboratorio
@@ -23,7 +23,7 @@ export function isResolved(check: Check) {
   if (check.expected === FALLBACK.route) {
     return check.routedTo === FALLBACK.route && check.toolsUsed.length === 0;
   }
-  return check.toolsUsed.includes(DEPARTMENTS[check.expected].expectedTool);
+  return check.toolsUsed.includes(expectedToolOf(check.expected));
 }
 
 export function auditCalls(checks: Check[]) {
@@ -42,8 +42,4 @@ export function auditCalls(checks: Check[]) {
 
   console.log(`     → ${passed}/${checks.length} llamadas resueltas`.blue);
   return `${passed}/${checks.length}`;
-}
-
-export function toolNamesOf(steps: { toolCalls: { toolName: string }[] }[]) {
-  return steps.flatMap((step) => step.toolCalls.map((call) => call.toolName));
 }
