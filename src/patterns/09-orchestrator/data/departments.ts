@@ -37,4 +37,4 @@ export const DEPARTMENT_LIST = Object.entries(DEPARTMENTS)
 // ejemplo de DEPARTMENT_LIST:
 // - ventas: Cursos disponibles, precios, descuentos, promociones.
 // - soporte: Problemas de acceso, videos que no cargan, errores de la plataforma.
-// - facturación: Facturas, cobros duplicados, comprobantes de pago.
+// - facturacion: Facturas, cobros duplicados, comprobantes de pago.
