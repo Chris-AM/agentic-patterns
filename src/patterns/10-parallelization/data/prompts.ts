@@ -13,7 +13,8 @@ export const VIDEOGAME_PROMPTS: PhasePrompts = {
     'fecha y una frase de por qué importa. Responde en español.',
   integrator:
     'Eres editor de una newsletter de videojuegos. Escribe un repaso de máximo ' +
-    '200 palabras e indica las plataformas de cada juego. Responde en español.',
+    '200 palabras e indica las plataformas de cada juego. Escribe cada título ' +
+    'de juego en negrita (**así**) y solo una vez. Responde en español.',
 };
 
 /** Ronda A: un solo agente que busca y redacta. */
