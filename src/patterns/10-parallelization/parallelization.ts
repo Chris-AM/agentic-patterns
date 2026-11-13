@@ -27,11 +27,14 @@ import { generateText, stepCountIs } from 'ai';
 
 import { createTracer, model } from '../../helpers/index.js';
 import { trace } from 'node:console';
+import { SINGLE_AGENT_INSTRUCTIONS, VIDEOGAME_PROMPTS } from './data/prompts.js';
 import { RESEARCH_REQUEST } from './data/research-request.js';
-import { integrateFindings } from './phases/integrate.js';
-import { planResearch } from './phases/plan.js';
-import { runWorker } from './phases/run-worker.js';
+import { createPhases } from './phases/create-phases.js';
 import { RAWG_API_KEY, searchUpcomingGames } from './tools/search-upcoming-games.js';
+
+// Límites de esta instancia: el núcleo los valida, aquí se define el valor.
+const SINGLE_AGENT_STEP_BUDGET = 8;
+const LIMITS = { maxTasks: 8, workerSteps: 4 };
 
 // ---------------------------------------------------------------------------
 // A) UN SOLO AGENTE — busca y redacta él mismo
@@ -45,12 +48,8 @@ async function singleAgent() {
   const { text } = await generateText({
     model,
     tools: { searchUpcomingGames },
-    stopWhen: stepCountIs(8),
-    instructions:
-      'Eres redactor de una newsletter de videojuegos. Consulta la ' +
-      'herramienta para cada plataforma que te pidan y redacta un repaso ' +
-      'de máximo 200 palabras con los 2 lanzamientos más relevantes de ' +
-      'cada una. Responde en español.',
+    stopWhen: stepCountIs(SINGLE_AGENT_STEP_BUDGET),
+    instructions: SINGLE_AGENT_INSTRUCTIONS,
     prompt: RESEARCH_REQUEST,
     onStepEnd: tracer.onStepFinish,
   });
@@ -72,8 +71,17 @@ async function planExecuteIntegrate() {
   const tracer = createTracer('paralelo');
   const startedAt = Date.now();
 
+  // El contexto (tracer, límites, prompts del caso, tools) se inyecta UNA vez.
+  // Resuelve el «//!» sobre el envío del tracer y los prompts fijos.
+  const phases = createPhases({
+    tracer,
+    limits: LIMITS,
+    prompts: VIDEOGAME_PROMPTS,
+    tools: { searchUpcomingGames },
+  });
+
   // 1. Planificar
-  const tasks = await planResearch(tracer);
+  const tasks = await phases.plan(RESEARCH_REQUEST);
 
   console.log(` Plan: ${tasks.length} investigaciones`.blue);
   for (const task of tasks) {
@@ -86,7 +94,7 @@ async function planExecuteIntegrate() {
   const findings = await Promise.all(
     tasks.map(async (task) => {
       console.log(`\n --> worker [${task.topic.yellow}] arranca`);
-      const result = await runWorker(task.assignment, tracer);
+      const result = await phases.runWorker(task.assignment);
       console.log(`\n <-- worker [${task.topic.yellow}] termina`);
 
       return { topic: task.topic, findings: result };
@@ -96,7 +104,7 @@ async function planExecuteIntegrate() {
   const workersMs = Date.now() - workersStartedAt;
 
   // 3. Integrar
-  const report = await integrateFindings(findings, tracer);
+  const report = await phases.integrate(RESEARCH_REQUEST, findings);
 
   console.log('\n Informe integrado:\n'.blue);
   console.log(report.green);
@@ -121,12 +129,12 @@ export async function parallelizationMain() {
     return;
   }
 
-  const a = await singleAgent();
+  // const a = await singleAgent();
   const b = await planExecuteIntegrate();
 
   console.log('\n═══ COMPARATIVA ═══\n'.blue);
   console.table({
-    'A) Agente único': a,
+    // 'A) Agente único': a,
     'B) Plan + paralelo + integración': b,
   });
 }
