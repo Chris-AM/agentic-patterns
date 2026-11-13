@@ -1,0 +1,44 @@
+import { model as defaultModel } from '../../../helpers/index.js';
+import type { PhaseContext } from './context.js';
+import { integrate, type Finding, type IntegrateExtras } from './integrate.js';
+import { plan } from './plan.js';
+import { runWorker, type WorkerTask } from './run-worker.js';
+
+// ---------------------------------------------------------------------------
+// FÁBRICA DE FASES — el contexto se inyecta UNA vez, en la composición
+// ---------------------------------------------------------------------------
+/**
+ * Va en la configuración lo estable de la instancia (tracer, límites,
+ * prompts del caso, tools y, opcionalmente, el modelo). Va en cada llamada
+ * lo que cambia por ejecución (la petición, los hallazgos).
+ *
+ * `model` es opcional: por defecto el de helpers; en las pruebas, uno simulado.
+ */
+export type PhasesConfig = Omit<PhaseContext, 'model'> & {
+  model?: PhaseContext['model'];
+};
+
+function assertPositiveInteger(name: string, value: number) {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new RangeError(`${name} debe ser un entero mayor que 0 (recibido: ${value})`);
+  }
+}
+
+export function createPhases(config: PhasesConfig) {
+  // Falla al crearse, no a mitad de una corrida.
+  assertPositiveInteger('limits.maxTasks', config.limits.maxTasks);
+  assertPositiveInteger('limits.workerSteps', config.limits.workerSteps);
+  assertPositiveInteger('limits.workerTimeoutMs', config.limits.workerTimeoutMs);
+  if (config.subjects.length === 0) {
+    throw new RangeError('subjects debe declarar al menos un eje de descomposición');
+  }
+
+  const ctx: PhaseContext = { ...config, model: config.model ?? defaultModel };
+
+  return {
+    plan: (request: string) => plan(ctx, request),
+    runWorker: (task: WorkerTask, signal?: AbortSignal) => runWorker(ctx, task, signal),
+    integrate: (request: string, findings: Finding[], extras?: IntegrateExtras) =>
+      integrate(ctx, request, findings, extras),
+  };
+}
