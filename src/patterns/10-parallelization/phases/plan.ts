@@ -30,8 +30,6 @@ export const planSchema = z.object({
 });
 
 export async function planResearch(tracer: ReturnType<typeof createTracer>) {
-  // TODO: Implementar un plan (output) para seguirlo
-
   const { output } = await generateText({
     model,
     output: Output.object({ schema: planSchema }),
