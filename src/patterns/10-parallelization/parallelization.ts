@@ -27,14 +27,17 @@ import { generateText, stepCountIs } from 'ai';
 
 import { createTracer, model } from '../../helpers/index.js';
 import { trace } from 'node:console';
+import { buildCatalog } from './data/game-catalog.js';
 import { SINGLE_AGENT_INSTRUCTIONS, VIDEOGAME_PROMPTS } from './data/prompts.js';
+import { auditReport, printAudit } from './data/report-checks.js';
 import { RESEARCH_REQUEST, WINDOW_DAYS } from './data/research-request.js';
 import { createPhases } from './phases/create-phases.js';
+import { fanOut } from './phases/fan-out.js';
 import { PLATFORMS, RAWG_API_KEY, searchUpcomingGames } from './tools/search-upcoming-games.js';
 
 // Límites de esta instancia: el núcleo los valida, aquí se define el valor.
 const SINGLE_AGENT_STEP_BUDGET = 8;
-const LIMITS = { maxTasks: 8, workerSteps: 4 };
+const LIMITS = { maxTasks: 8, workerSteps: 4, workerTimeoutMs: 30_000 };
 
 /**
  * Hechos fijos de la corrida, calculados UNA vez por el código. Todas las
@@ -104,32 +107,49 @@ async function planExecuteIntegrate() {
     console.log(`   · ${task.topic.yellow} [${task.subject}]: ${task.assignment}`);
   }
 
-  // 2. Ejecutar en paralelo — aquí es donde se gana la latencia
+  // 2. Ejecutar en paralelo — aquí es donde se gana la latencia.
+  //    fanOut = allSettled + timeout por worker: un fallo no tumba a los demás.
   const workersStartedAt = Date.now();
 
-  const findings = await Promise.all(
-    tasks.map(async (task) => {
+  const results = await fanOut(
+    tasks,
+    async (task, signal) => {
       console.log(`\n --> worker [${task.topic.yellow}] arranca`);
-      const { notes, data } = await phases.runWorker(task);
+      const { notes, data } = await phases.runWorker(task, signal);
       console.log(`\n <-- worker [${task.topic.yellow}] termina`);
 
       return { topic: task.topic, subject: task.subject, notes, data };
-    })
+    },
+    { timeoutMs: LIMITS.workerTimeoutMs }
   );
+
+  const findings = results.flatMap((result) => (result.ok ? [result.value] : []));
+  const missing = results.flatMap((result) => (result.ok ? [] : [result.item.subject]));
+  for (const result of results) {
+    if (!result.ok) console.log(` ✗ worker [${result.item.topic}] falló: ${result.error}`.red);
+  }
 
   const workersMs = Date.now() - workersStartedAt;
 
   // 3. Integrar
-  const report = await phases.integrate(RESEARCH_REQUEST, findings);
+  // El catálogo deduplicado lo arma el CÓDIGO; la integración solo redacta.
+  const catalog = buildCatalog(findings);
+  const report = await phases.integrate(RESEARCH_REQUEST, findings, { consolidated: catalog, missing });
 
   console.log('\n Informe integrado:\n'.blue);
   console.log(report.green);
+
+  // 4. Verificar el informe contra la traza (el juez determinista).
+  console.log('\n Auditoría:'.blue);
+  const audit = printAudit(auditReport(report, catalog, missing));
 
   return {
     ...tracer.summary(),
     ms: Date.now() - startedAt,
     workersMs,
     workers: tasks.length,
+    fallidos: missing.length,
+    audit,
   };
 }
 
