@@ -2,7 +2,7 @@ import { model as defaultModel } from '../../../helpers/index.js';
 import type { PhaseContext } from './context.js';
 import { integrate, type Finding } from './integrate.js';
 import { plan } from './plan.js';
-import { runWorker } from './run-worker.js';
+import { runWorker, type WorkerTask } from './run-worker.js';
 
 // ---------------------------------------------------------------------------
 // FÁBRICA DE FASES — el contexto se inyecta UNA vez, en la composición
@@ -28,12 +28,15 @@ export function createPhases(config: PhasesConfig) {
   // Falla al crearse, no a mitad de una corrida.
   assertPositiveInteger('limits.maxTasks', config.limits.maxTasks);
   assertPositiveInteger('limits.workerSteps', config.limits.workerSteps);
+  if (config.subjects.length === 0) {
+    throw new RangeError('subjects debe declarar al menos un eje de descomposición');
+  }
 
   const ctx: PhaseContext = { ...config, model: config.model ?? defaultModel };
 
   return {
     plan: (request: string) => plan(ctx, request),
-    runWorker: (assignment: string) => runWorker(ctx, assignment),
+    runWorker: (task: WorkerTask) => runWorker(ctx, task),
     integrate: (request: string, findings: Finding[]) => integrate(ctx, request, findings),
   };
 }

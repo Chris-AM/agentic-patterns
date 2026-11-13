@@ -14,12 +14,15 @@ import { composeInstructions, type PhaseContext } from './context.js';
  * El máximo de tareas lo define la instancia; el mínimo (1) es del núcleo:
  * un plan vacío nunca es válido.
  */
-export function buildPlanSchema(maxTasks: number) {
+export function buildPlanSchema(maxTasks: number, subjects: readonly string[]) {
   return z.object({
     tasks: z
       .array(
         z.object({
           topic: z.string().describe('Nombre corto, ej: "PlayStation"'),
+          subject: z
+            .enum(subjects as [string, ...string[]])
+            .describe('Eje de la tarea, de la lista permitida'),
           assignment: z
             .string()
             .describe(
@@ -41,8 +44,8 @@ const PLAN_RULES =
 export async function plan(ctx: PhaseContext, request: string) {
   const { output } = await generateText({
     model: ctx.model,
-    output: Output.object({ schema: buildPlanSchema(ctx.limits.maxTasks) }),
-    instructions: composeInstructions(ctx.prompts.planner, PLAN_RULES),
+    output: Output.object({ schema: buildPlanSchema(ctx.limits.maxTasks, ctx.subjects) }),
+    instructions: composeInstructions(ctx.prompts.planner, PLAN_RULES, ctx.facts),
     prompt: request,
     onStepEnd: ctx.tracer.onStepFinish,
   });

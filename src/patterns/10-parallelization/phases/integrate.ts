@@ -1,20 +1,23 @@
 import { generateText } from 'ai';
 
 import { composeInstructions, type PhaseContext } from './context.js';
+import type { ToolOutput } from './run-worker.js';
 
 // ----- Fase 3: la integración ----------------------------------------------
 
-export type Finding = { topic: string; findings: string };
+export type Finding = { topic: string; subject: string; notes: string; data: ToolOutput[] };
 
 /** Regla del mecanismo: una sola respuesta, sin repetir lo que aparece en varios temas. */
 const INTEGRATE_RULES =
   'Integra los hallazgos de todos los temas en una sola respuesta. ' +
-  'Si un mismo elemento aparece en varios temas, menciónalo una sola vez.';
+  'Si un mismo elemento aparece en varios temas, menciónalo una sola vez. ' +
+  'Los `data` de cada tema son la fuente de verdad (salidas literales de las herramientas); ' +
+  'si las `notes` los contradicen, manda el dato.';
 
 export async function integrate(ctx: PhaseContext, request: string, findings: Finding[]) {
   const { text } = await generateText({
     model: ctx.model,
-    instructions: composeInstructions(ctx.prompts.integrator, INTEGRATE_RULES),
+    instructions: composeInstructions(ctx.prompts.integrator, INTEGRATE_RULES, ctx.facts),
     prompt:
       `Petición original: ${request} \n\n` +
       'Hallazgos por tema: \n' +

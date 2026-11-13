@@ -29,7 +29,28 @@ export type PhaseContext = {
   prompts: PhasePrompts;
   /** Tools de los workers (las del caso). */
   tools: ToolSet;
+  /**
+   * Eje de la descomposición que declara la instancia (plataformas,
+   * contratos…). Cada tarea del plan trae uno: deja de ser texto interpretable.
+   */
+  subjects: readonly string[];
+  /**
+   * Hechos fijos que calcula el CÓDIGO una vez por corrida (hoy, ventana…).
+   * Todas las fases reciben la misma referencia: el modelo no adivina el presente.
+   */
+  facts: Record<string, string>;
 };
 
-/** Rol del caso + regla del mecanismo, en ese orden. */
-export const composeInstructions = (role: string, rules: string) => `${role}\n${rules}`;
+function formatFacts(facts: Record<string, string>) {
+  const lines = Object.entries(facts).map(([key, value]) => `- ${key}: ${value}`);
+  return lines.length
+    ? `\nContexto fijo calculado por el sistema (úsalo tal cual, no lo supongas):\n${lines.join('\n')}`
+    : '';
+}
+
+/** Rol del caso + regla del mecanismo + hechos fijos, en ese orden. */
+export const composeInstructions = (
+  role: string,
+  rules: string,
+  facts: Record<string, string>
+) => `${role}\n${rules}${formatFacts(facts)}`;
