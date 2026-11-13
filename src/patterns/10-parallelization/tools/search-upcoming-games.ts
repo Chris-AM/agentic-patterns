@@ -9,6 +9,9 @@ import { WINDOW_DAYS } from '../data/research-request.js';
 
 export const RAWG_API_KEY = process.env.RAWG_API_KEY ?? '';
 
+/** Techo de la llamada HTTP: una API lenta no debe colgar al worker. */
+const RAWG_TIMEOUT_MS = 5_000;
+
 /**
  * IDs de plataforma padre en RAWG. Verifícalos con:
  * GET https://api.rawg.io/api/platforms/lists/parents?key=...
@@ -46,7 +49,15 @@ export const searchUpcomingGames = tool({
       page_size: String(limit),
     });
 
-    const response = await fetch(`https://api.rawg.io/api/games?${params}`);
+    // Errores de red o timeout vuelven como observación (lección de ReAct), no como excepción.
+    let response: Response;
+    try {
+      response = await fetch(`https://api.rawg.io/api/games?${params}`, {
+        signal: AbortSignal.timeout(RAWG_TIMEOUT_MS),
+      });
+    } catch (error) {
+      return { error: `No se pudo consultar RAWG: ${(error as Error).message}` };
+    }
     if (!response.ok) return { error: `RAWG respondió ${response.status}` };
 
     const data = (await response.json()) as {
