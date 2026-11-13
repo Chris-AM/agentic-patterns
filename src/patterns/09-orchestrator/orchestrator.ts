@@ -18,152 +18,16 @@
  * es aritmético.
  */
 
-import { generateText, tool, stepCountIs, Output } from 'ai';
+import { generateText, stepCountIs, Output } from 'ai';
 import { z } from 'zod';
 
 import { createTracer, model } from '../../helpers/index.js';
 import { trace } from 'node:console';
-
-// ---------------------------------------------------------------------------
-// LOS DEPARTAMENTOS — iguales que en el lab 08, con tools disjuntas
-// ---------------------------------------------------------------------------
-// Cada tool devuelve un identificador que solo existe si se ejecutó.
-// Ese identificador es la prueba: si aparece en la respuesta final,
-// el departamento trabajó y el resultado llegó al cliente.
-
-const randomId = () => Math.floor(Math.random() * 9000 + 1000);
-
-const sendCatalog = tool({
-  description: 'Envía el catálogo de cursos y precios al cliente. Solo ventas.',
-  inputSchema: z.object({
-    interest: z.string().describe('Tema de interés, ej: "Flutter"'),
-  }),
-  execute: async ({ interest }) => {
-    const catalogId = `CAT-${randomId()}`;
-    console.log(`       🔧 sendCatalog(${interest}) → ${catalogId}`.yellow);
-    return { catalogId, interest };
-  },
-});
-
-const openTicket = tool({
-  description:
-    'Abre un ticket de soporte técnico por un problema de acceso o de plataforma.',
-  inputSchema: z.object({ issue: z.string() }),
-  execute: async ({ issue }) => {
-    const ticketId = `TK-${randomId()}`;
-    console.log(`       🔧 openTicket(${issue}) → ${ticketId}`.yellow);
-    return { ticketId, issue };
-  },
-});
-
-const resendInvoice = tool({
-  description: 'Reenvía o corrige una factura de una compra. Solo facturación.',
-  inputSchema: z.object({ reason: z.string() }),
-  execute: async ({ reason }) => {
-    const invoiceId = `INV-${randomId()}`;
-    console.log(`       🔧 resendInvoice(${reason}) → ${invoiceId}`.yellow);
-    return { invoiceId, reason };
-  },
-});
-
-const DEPARTMENTS = {
-  ventas: {
-    description: 'Cursos disponibles, precios, descuentos, promociones.',
-    instructions:
-      'Eres del departamento de ventas de DevTalles. Envía el catálogo con tu ' +
-      'herramienta y confirma en una frase citando el identificador. Responde en español.',
-    tools: { sendCatalog },
-  },
-  soporte: {
-    description:
-      'Problemas de acceso, videos que no cargan, errores de la plataforma.',
-    instructions:
-      'Eres del departamento de soporte técnico de DevTalles. Abre un ticket ' +
-      'con tu herramienta y devuelve su número. Responde en español.',
-    tools: { openTicket },
-  },
-  facturacion: {
-    description: 'Facturas, cobros duplicados, comprobantes de pago.',
-    instructions:
-      'Eres del departamento de facturación de DevTalles. Reenvía o corrige la ' +
-      'factura con tu herramienta y devuelve su identificador. Responde en español.',
-    tools: { resendInvoice },
-  },
-} as const;
-
-type Department = keyof typeof DEPARTMENTS;
-const DEPARTMENT_NAMES = Object.keys(DEPARTMENTS) as [
-  Department,
-  ...Department[]
-];
-
-const DEPARTMENT_LIST = Object.entries(DEPARTMENTS)
-  .map(([name, d]) => `- ${name}: ${d.description}`)
-  .join('\n');
-// ejemplo de DEPARTMENT_LIST:
-// - ventas: Cursos disponibles, precios, descuentos, promociones.
-// - soporte: Problemas de acceso, videos que no cargan, errores de la plataforma.
-// - facturación: Facturas, cobros duplicados, comprobantes de pago.
-
-// ---------------------------------------------------------------------------
-// LA LLAMADA — necesita a los TRES departamentos
-// ---------------------------------------------------------------------------
-
-const COMPOUND_CALL =
-  'Me cobraron dos veces el curso de NestJS, necesito la factura corregida. ' +
-  'Además no puedo entrar a mi cuenta, dice contraseña incorrecta. ' +
-  'Y ya que estoy: ¿tienen descuento si cambio al curso de Flutter?';
-
-// ---------------------------------------------------------------------------
-// EL JUEZ PROGRAMÁTICO — la fuente de verdad del laboratorio
-// ---------------------------------------------------------------------------
-
-type Check = { label: string; passed: boolean };
-
-/**
- * Determinista: busca en la respuesta final los tres identificadores.
- * Solo existen como resultado de las tools, así que verlos en el texto
- * prueba que el departamento trabajó Y que su resultado llegó al cliente.
- */
-function auditAnswer(text: string): Check[] {
-  return [
-    { label: 'Facturación: factura INV-####', passed: /INV-\d{4}/.test(text) },
-    { label: 'Soporte: ticket TK-####', passed: /TK-\d{4}/.test(text) },
-    { label: 'Ventas: catálogo CAT-####', passed: /CAT-\d{4}/.test(text) },
-  ];
-}
-
-function printAudit(checks: Check[]) {
-  const passed = checks.filter((c) => c.passed).length;
-  for (const check of checks) {
-    console.log(`     ${check.passed ? '✓'.green : '✗'.red} ${check.label}`);
-  }
-  console.log(`     → ${passed}/${checks.length} partes resueltas`.blue);
-  return `${passed}/${checks.length}`;
-}
-
-// ---------------------------------------------------------------------------
-// EL WORKER — un departamento atendiendo una tarea (especialista)
-// ---------------------------------------------------------------------------
-
-async function runWorker(
-  department: Department,
-  task: string,
-  tracer: ReturnType<typeof createTracer>
-) {
-  const config = DEPARTMENTS[department];
-
-  const { text } = await generateText({
-    model,
-    instructions: config.instructions,
-    prompt: task,
-    stopWhen: stepCountIs(3),
-    tools: config.tools,
-    onStepEnd: tracer.onStepFinish,
-  });
-
-  return text.trim();
-}
+import { auditAnswer, printAudit } from './data/answer-checks.js';
+import { COMPOUND_CALL } from './data/compound-call.js';
+import { DEPARTMENT_LIST, DEPARTMENT_NAMES } from './data/departments.js';
+import { delegateTo } from './delegation/delegate-to.js';
+import { runWorker } from './workers/run-worker.js';
 
 // ---------------------------------------------------------------------------
 // A) ROUTER — el patrón anterior, frente a una llamada que no le cabe
@@ -217,33 +81,6 @@ async function withRouter() {
 // B) ORQUESTADOR — un solo agente cuyas herramientas son los workers
 // ---------------------------------------------------------------------------
 
-/**
- * Cada herramienta del orquestador ES un departamento completo: por dentro
- * ejecuta el worker con su propia tool y sus propias instrucciones.
- */
-function delegateTo(
-  department: Department,
-  tracer: ReturnType<typeof createTracer>
-) {
-  const config = DEPARTMENTS[department];
-
-  return tool({
-    description: `Delega una tarea al departamento de ${department}: ${config.description}`,
-    inputSchema: z.object({
-      task: z
-        .string()
-        .describe('Instrucción concreta para el departamento. En una frase. '),
-    }),
-    execute: async ({ task }) => {
-      console.log(`\n   -> Orchestrator delega a ${department}: ${task}`.blue);
-      const result = await runWorker(department, task, tracer);
-      console.log(`     ${department}: ${result}`.green);
-
-      return { department, result };
-    },
-  });
-}
-
 async function withOrchestrator() {
   console.log('\n═══ B) ORQUESTADOR — mantiene el control ═══\n'.blue);
   const tracer = createTracer('orquestador');
@@ -283,12 +120,12 @@ async function withOrchestrator() {
 // ---------------------------------------------------------------------------
 
 export async function orchestratorWorkersMain() {
-  const a = await withRouter();
+  // const a = await withRouter();
   const b = await withOrchestrator();
 
   console.log('\n═══ COMPARATIVA ═══\n'.blue);
   console.table({
-    Router: a,
+    // Router: a,
     Orquestador: b,
   });
 
