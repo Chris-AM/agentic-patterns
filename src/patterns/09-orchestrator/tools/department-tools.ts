@@ -10,13 +10,20 @@ import { z } from 'zod';
 
 const randomId = () => Math.floor(Math.random() * 9000 + 1000);
 
+/** Prefijo del ID que emite cada tool: única fuente de verdad para tools y juez. */
+export const ID_PREFIX = {
+  sendCatalog: 'CAT',
+  openTicket: 'TK',
+  resendInvoice: 'INV',
+} as const;
+
 export const sendCatalog = tool({
   description: 'Envía el catálogo de cursos y precios al cliente. Solo ventas.',
   inputSchema: z.object({
     interest: z.string().describe('Tema de interés, ej: "Flutter"'),
   }),
   execute: async ({ interest }) => {
-    const catalogId = `CAT-${randomId()}`;
+    const catalogId = `${ID_PREFIX.sendCatalog}-${randomId()}`;
     console.log(`       🔧 sendCatalog(${interest}) → ${catalogId}`.yellow);
     return { catalogId, interest };
   },
@@ -27,7 +34,7 @@ export const openTicket = tool({
     'Abre un ticket de soporte técnico por un problema de acceso o de plataforma.',
   inputSchema: z.object({ issue: z.string() }),
   execute: async ({ issue }) => {
-    const ticketId = `TK-${randomId()}`;
+    const ticketId = `${ID_PREFIX.openTicket}-${randomId()}`;
     console.log(`       🔧 openTicket(${issue}) → ${ticketId}`.yellow);
     return { ticketId, issue };
   },
@@ -37,7 +44,7 @@ export const resendInvoice = tool({
   description: 'Reenvía o corrige una factura de una compra. Solo facturación.',
   inputSchema: z.object({ reason: z.string() }),
   execute: async ({ reason }) => {
-    const invoiceId = `INV-${randomId()}`;
+    const invoiceId = `${ID_PREFIX.resendInvoice}-${randomId()}`;
     console.log(`       🔧 resendInvoice(${reason}) → ${invoiceId}`.yellow);
     return { invoiceId, reason };
   },
