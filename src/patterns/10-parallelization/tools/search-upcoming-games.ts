@@ -1,6 +1,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 
+import { WINDOW_DAYS } from '../data/research-request.js';
+
 // ---------------------------------------------------------------------------
 // LA HERRAMIENTA DE BÚSQUEDA — una sola, genérica
 // ---------------------------------------------------------------------------
@@ -28,7 +30,7 @@ export const searchUpcomingGames = tool({
   inputSchema: z.object({
     // Derivado de PLATFORMS: agregar una plataforma no exige tocar el schema.
     platform: z.enum(Object.keys(PLATFORMS) as [Platform, ...Platform[]]),
-    days: z.number().min(1).max(365).default(90),
+    days: z.number().min(1).max(365).default(WINDOW_DAYS),
     limit: z.number().min(3).max(20).default(10),
   }),
   execute: async ({ platform, days, limit }) => {
