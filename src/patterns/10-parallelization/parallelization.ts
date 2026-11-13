@@ -28,13 +28,27 @@ import { generateText, stepCountIs } from 'ai';
 import { createTracer, model } from '../../helpers/index.js';
 import { trace } from 'node:console';
 import { SINGLE_AGENT_INSTRUCTIONS, VIDEOGAME_PROMPTS } from './data/prompts.js';
-import { RESEARCH_REQUEST } from './data/research-request.js';
+import { RESEARCH_REQUEST, WINDOW_DAYS } from './data/research-request.js';
 import { createPhases } from './phases/create-phases.js';
-import { RAWG_API_KEY, searchUpcomingGames } from './tools/search-upcoming-games.js';
+import { PLATFORMS, RAWG_API_KEY, searchUpcomingGames } from './tools/search-upcoming-games.js';
 
 // Límites de esta instancia: el núcleo los valida, aquí se define el valor.
 const SINGLE_AGENT_STEP_BUDGET = 8;
 const LIMITS = { maxTasks: 8, workerSteps: 4 };
+
+/**
+ * Hechos fijos de la corrida, calculados UNA vez por el código. Todas las
+ * fases comparten la misma referencia temporal (autocontención): el modelo
+ * no conoce la fecha de hoy y «próximos 90 días» no se puede resolver sin ella.
+ */
+function runFacts(now = new Date()) {
+  const iso = (date: Date) => date.toISOString().slice(0, 10);
+  const until = new Date(now.getTime() + WINDOW_DAYS * 86_400_000);
+  return {
+    hoy: iso(now),
+    'ventana de búsqueda': `${iso(now)} → ${iso(until)} (${WINDOW_DAYS} días)`,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // A) UN SOLO AGENTE — busca y redacta él mismo
@@ -78,6 +92,8 @@ async function planExecuteIntegrate() {
     limits: LIMITS,
     prompts: VIDEOGAME_PROMPTS,
     tools: { searchUpcomingGames },
+    subjects: Object.keys(PLATFORMS),
+    facts: runFacts(),
   });
 
   // 1. Planificar
@@ -85,7 +101,7 @@ async function planExecuteIntegrate() {
 
   console.log(` Plan: ${tasks.length} investigaciones`.blue);
   for (const task of tasks) {
-    console.log(`   · ${task.topic.yellow}: ${task.assignment}`);
+    console.log(`   · ${task.topic.yellow} [${task.subject}]: ${task.assignment}`);
   }
 
   // 2. Ejecutar en paralelo — aquí es donde se gana la latencia
@@ -94,10 +110,10 @@ async function planExecuteIntegrate() {
   const findings = await Promise.all(
     tasks.map(async (task) => {
       console.log(`\n --> worker [${task.topic.yellow}] arranca`);
-      const result = await phases.runWorker(task.assignment);
+      const { notes, data } = await phases.runWorker(task);
       console.log(`\n <-- worker [${task.topic.yellow}] termina`);
 
-      return { topic: task.topic, findings: result };
+      return { topic: task.topic, subject: task.subject, notes, data };
     })
   );
 
