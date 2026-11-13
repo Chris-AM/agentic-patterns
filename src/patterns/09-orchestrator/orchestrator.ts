@@ -23,16 +23,23 @@ import { z } from 'zod';
 
 import { createTracer, model } from '../../helpers/index.js';
 import { trace } from 'node:console';
-import { auditAnswer, printAudit } from './data/answer-checks.js';
+import { auditAnswer, collectIds, inventedIds, printAudit } from './data/answer-checks.js';
 import { COMPOUND_CALL } from './data/compound-call.js';
 import { DEPARTMENT_LIST, DEPARTMENT_NAMES } from './data/departments.js';
-import { delegateTo } from './delegation/delegate-to.js';
+import { delegationTools } from './delegation/delegate-to.js';
 import { runWorker } from './workers/run-worker.js';
+
+// Techos anidados (mejora 3): el núcleo los exige, esta instancia define el valor.
+// Peor caso ≈ ORCHESTRATOR_STEP_BUDGET × (1 + WORKER_STEP_BUDGET) llamadas al modelo.
+const ORCHESTRATOR_STEP_BUDGET = 8;
+const WORKER_STEP_BUDGET = 3;
 
 // ---------------------------------------------------------------------------
 // A) ROUTER — el patrón anterior, frente a una llamada que no le cabe
 // ---------------------------------------------------------------------------
 
+// 🔁 Mejora para software real: este clasificador repite el de 08; ver
+// workers/run-worker.ts para el reciclaje del núcleo (router/classify.ts).
 async function withRouter() {
   console.log('\n═══ A) ROUTER — transfiere una vez y se retira ═══\n'.blue);
   const tracer = createTracer('router');
@@ -62,9 +69,12 @@ async function withRouter() {
   );
 
   // 2. Transferir. La centralita ya no participa.
-  const answer = await runWorker(decision.department, COMPOUND_CALL, tracer);
+  const { text: answer, issuedIds } = await runWorker(decision.department, COMPOUND_CALL, {
+    stepBudget: WORKER_STEP_BUDGET,
+    tracer,
+  });
 
-  const accuracy = printAudit(auditAnswer(answer));
+  const accuracy = printAudit(auditAnswer(answer, issuedIds), inventedIds(answer, issuedIds));
 
   console.log(
     (
@@ -87,7 +97,7 @@ async function withOrchestrator() {
 
   console.log(` ☎️ Llamada: ${COMPOUND_CALL}`.blue);
 
-  const { text } = await generateText({
+  const { text, steps } = await generateText({
     model,
     instructions:
       'Eres el supervisor de la centralita de DevTalles. No atiendes al ' +
@@ -97,12 +107,8 @@ async function withOrchestrator() {
       'integrando los resultados y conservando los identificadores exactos ' +
       '(facturas, tickets, catálogos). Responde en español, máximo 120 palabras.',
     prompt: COMPOUND_CALL,
-    tools: {
-      delegateToVentas: delegateTo('ventas', tracer),
-      delegateToSoporte: delegateTo('soporte', tracer),
-      delegateToFacturacion: delegateTo('facturacion', tracer),
-    },
-    stopWhen: stepCountIs(8),
+    tools: delegationTools({ stepBudget: WORKER_STEP_BUDGET, tracer }),
+    stopWhen: stepCountIs(ORCHESTRATOR_STEP_BUDGET),
     onStepEnd: tracer.onStepFinish,
   });
 
@@ -110,7 +116,9 @@ async function withOrchestrator() {
   console.log(`     ${text.trim()}`.green);
 
   console.log('\n Auditoría:'.blue);
-  const accuracy = printAudit(auditAnswer(text));
+  // Los IDs emitidos se leen de la traza del orquestador (issuedIds de cada delegación).
+  const issuedIds = collectIds(steps);
+  const accuracy = printAudit(auditAnswer(text, issuedIds), inventedIds(text, issuedIds));
 
   return { ...tracer.summary(), accuracy };
 }
