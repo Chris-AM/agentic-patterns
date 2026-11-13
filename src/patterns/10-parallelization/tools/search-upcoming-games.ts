@@ -26,7 +26,8 @@ export const searchUpcomingGames = tool({
     'ventana de días, ordenados por expectación. Úsala antes de responder: ' +
     'no inventes títulos ni fechas.',
   inputSchema: z.object({
-    platform: z.enum(['pc', 'playstation', 'xbox', 'nintendo']),
+    // Derivado de PLATFORMS: agregar una plataforma no exige tocar el schema.
+    platform: z.enum(Object.keys(PLATFORMS) as [Platform, ...Platform[]]),
     days: z.number().min(1).max(365).default(90),
     limit: z.number().min(3).max(20).default(10),
   }),
