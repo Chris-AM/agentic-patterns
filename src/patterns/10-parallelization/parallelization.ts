@@ -23,77 +23,15 @@
  *   - export RAWG_API_KEY="..."
  */
 
-import { generateText, tool, stepCountIs, Output } from 'ai';
-import { z } from 'zod';
+import { generateText, stepCountIs } from 'ai';
 
 import { createTracer, model } from '../../helpers/index.js';
 import { trace } from 'node:console';
-
-const RESEARCH_REQUEST =
-  'Quiero saber en los próximos 90 días, qué juegos vienen para ' +
-  'Nintendo, PC, PlayStation y XBOX';
-
-// ---------------------------------------------------------------------------
-// LA HERRAMIENTA DE BÚSQUEDA — una sola, genérica
-// ---------------------------------------------------------------------------
-
-const RAWG_API_KEY = process.env.RAWG_API_KEY ?? '';
-
-/**
- * IDs de plataforma padre en RAWG. Verifícalos con:
- * GET https://api.rawg.io/api/platforms/lists/parents?key=...
- */
-const PLATFORMS = {
-  pc: 1,
-  playstation: 2,
-  xbox: 3,
-  nintendo: 7,
-} as const;
-
-type Platform = keyof typeof PLATFORMS;
-
-const searchUpcomingGames = tool({
-  description:
-    'Busca los videojuegos que salen en una plataforma dentro de una ' +
-    'ventana de días, ordenados por expectación. Úsala antes de responder: ' +
-    'no inventes títulos ni fechas.',
-  inputSchema: z.object({
-    platform: z.enum(['pc', 'playstation', 'xbox', 'nintendo']),
-    days: z.number().min(1).max(365).default(90),
-    limit: z.number().min(3).max(20).default(10),
-  }),
-  execute: async ({ platform, days, limit }) => {
-    const from = new Date();
-    const to = new Date(from.getTime() + days * 86_400_000);
-    const iso = (date: Date) => date.toISOString().slice(0, 10);
-
-    const params = new URLSearchParams({
-      key: RAWG_API_KEY,
-      dates: `${iso(from)},${iso(to)}`,
-      parent_platforms: String(PLATFORMS[platform as Platform]),
-      ordering: '-added',
-      page_size: String(limit),
-    });
-
-    const response = await fetch(`https://api.rawg.io/api/games?${params}`);
-    if (!response.ok) return { error: `RAWG respondió ${response.status}` };
-
-    const data = (await response.json()) as {
-      results: { name: string; released: string | null; added: number }[];
-    };
-
-    return {
-      platform,
-      games: data.results
-        .filter((game) => game.released)
-        .map((game) => ({
-          title: game.name,
-          released: game.released,
-          hype: game.added,
-        })),
-    };
-  },
-});
+import { RESEARCH_REQUEST } from './data/research-request.js';
+import { integrateFindings } from './phases/integrate.js';
+import { planResearch } from './phases/plan.js';
+import { runWorker } from './phases/run-worker.js';
+import { RAWG_API_KEY, searchUpcomingGames } from './tools/search-upcoming-games.js';
 
 // ---------------------------------------------------------------------------
 // A) UN SOLO AGENTE — busca y redacta él mismo
@@ -125,100 +63,6 @@ async function singleAgent() {
 // ---------------------------------------------------------------------------
 // B) PLANIFICAR → EJECUTAR EN PARALELO → INTEGRAR
 // ---------------------------------------------------------------------------
-
-// ----- Fase 1: el plan -----------------------------------------------------
-
-/**
- * Salida estructurada. La forma importa:
- *   - `topic` es lo que vemos en consola y en la comparativa.
- *   - `assignment` es el encargo completo para el worker. Debe ser
- *     autocontenido: el worker no ve la petición original ni a los demás.
- */
-const planSchema = z.object({
-  tasks: z
-    .array(
-      z.object({
-        topic: z.string().describe('Nombre corto, ej: "PlayStation"'),
-        assignment: z
-          .string()
-          .describe(
-            'Encargo completo y autocontenido para un investigador que no conoce la petición original '
-          ),
-      })
-    )
-    .min(1)
-    .max(8)
-    .describe('Investigaciones independientes entre sí '),
-});
-
-async function planResearch(tracer: ReturnType<typeof createTracer>) {
-  // TODO: Implementar un plan (output) para seguirlo
-
-  const { output } = await generateText({
-    model,
-    output: Output.object({ schema: planSchema }),
-    instructions:
-      'Eres un planificador. No investigues.' +
-      ' Descompón la petición en investigaciones independientes que puedan hacerse a la vez, ' +
-      ' una por tema. No incluyas temas que no se mencionan y responde en español. ',
-    prompt: RESEARCH_REQUEST,
-    onStepEnd: tracer.onStepFinish,
-  });
-
-  return output.tasks;
-}
-
-// ----- Fase 2: el worker ---------------------------------------------------
-
-/**
- * Un sub-agente con la herramienta de búsqueda y un encargo.
- * Devuelve texto. Es el mismo runWorker que en los labs anteriores.
- */
-async function runWorker(
-  assignment: string,
-  tracer: ReturnType<typeof createTracer>
-) {
-  const { text } = await generateText({
-    model,
-    tools: { searchUpcomingGames },
-    stopWhen: stepCountIs(4),
-    instructions:
-      'Eres un investigador de videojuegos. Cumple tu encargo consultando ' +
-      'la herramienta y responde con una lista breve: título, fecha y una ' +
-      'frase de por qué importa. Copia títulos y fechas literalmente. ' +
-      'Responde en español.',
-    prompt: assignment,
-    onStepEnd: tracer.onStepFinish,
-  });
-
-  return text;
-}
-
-// ----- Fase 3: la integración ----------------------------------------------
-
-async function integrateFindings(
-  findings: { topic: string; findings: string }[],
-  tracer: ReturnType<typeof createTracer>
-) {
-  const { text } = await generateText({
-    model,
-    instructions:
-      'Eres editor de una newsletter de videojuegos. Integra los hallazgos ' +
-      'en un repaso de máximo 200 palabras. Si un juego aparece en varios ' +
-      'temas, menciónalo UNA sola vez indicando todas sus plataformas. ' +
-      'Responde en español.',
-    prompt:
-      `Petición original: ${RESEARCH_REQUEST} \n\n` +
-      'Hallazgos por tema: \n' +
-      JSON.stringify(findings),
-    // findings
-    //   .map((item) => `--- ${item.topic} --- \n ${item.findings}`)
-    //   .join('\n\n'),
-    onStepEnd: tracer.onStepFinish,
-  });
-
-  return text;
-}
 
 // ----- Las tres fases juntas -----------------------------------------------
 
