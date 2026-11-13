@@ -19,7 +19,7 @@ const WORKER_RULES =
 export type WorkerTask = { subject: string; assignment: string };
 export type ToolOutput = { toolName: string; output: unknown };
 
-export async function runWorker(ctx: PhaseContext, task: WorkerTask) {
+export async function runWorker(ctx: PhaseContext, task: WorkerTask, signal?: AbortSignal) {
   const { text, steps } = await generateText({
     model: ctx.model,
     tools: ctx.tools,
@@ -27,6 +27,7 @@ export async function runWorker(ctx: PhaseContext, task: WorkerTask) {
     instructions: composeInstructions(ctx.prompts.worker, WORKER_RULES, ctx.facts),
     prompt: `Asunto: ${task.subject}\n${task.assignment}`,
     onStepEnd: ctx.tracer.onStepFinish,
+    abortSignal: signal,
   });
 
   const data: ToolOutput[] = steps

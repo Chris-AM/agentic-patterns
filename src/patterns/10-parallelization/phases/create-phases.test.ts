@@ -18,7 +18,7 @@ const FACTS = { hoy: '2026-11-13', ventana: '2026-11-13 → 2027-02-11' };
 function config(overrides: Partial<PhasesConfig> = {}): PhasesConfig {
   return {
     tracer: { onStepFinish: () => {} },
-    limits: { maxTasks: 4, workerSteps: 2 },
+    limits: { maxTasks: 4, workerSteps: 2, workerTimeoutMs: 1000 },
     prompts: {
       planner: 'Eres el planificador de una newsletter de videojuegos.',
       worker: 'Eres un investigador de videojuegos.',
@@ -33,9 +33,10 @@ function config(overrides: Partial<PhasesConfig> = {}): PhasesConfig {
 
 test('la fábrica rechaza límites inválidos al crearse', () => {
   for (const limits of [
-    { maxTasks: 0, workerSteps: 2 },
-    { maxTasks: 4, workerSteps: 1.5 },
-    { maxTasks: -1, workerSteps: 2 },
+    { maxTasks: 0, workerSteps: 2, workerTimeoutMs: 1000 },
+    { maxTasks: 4, workerSteps: 1.5, workerTimeoutMs: 1000 },
+    { maxTasks: -1, workerSteps: 2, workerTimeoutMs: 1000 },
+    { maxTasks: 4, workerSteps: 2, workerTimeoutMs: 0 },
   ]) {
     assert.throws(() => createPhases(config({ limits })), RangeError, JSON.stringify(limits));
   }
@@ -84,6 +85,20 @@ test('integrate: recibe los datos como fuente de verdad, además de las notas y 
   assert.match(sent, /Juego X/);
   assert.match(sent, /fuente de verdad/);
   assert.match(sent, /hoy: 2026-11-13/);
+});
+
+test('integrate: recibe el consolidado del sistema y debe declarar los temas faltantes', async () => {
+  const model = mockModel('Informe.');
+  await createPhases(config({ model })).integrate('¿Qué sale?', [], {
+    consolidated: [{ title: 'Juego Consolidado', platforms: ['pc', 'xbox'] }],
+    missing: ['xbox'],
+  });
+
+  const sent = sentTo(model);
+  assert.match(sent, /Juego Consolidado/);
+  assert.match(sent, /consolidad/i);
+  assert.match(sent, /xbox/);
+  assert.match(sent, /decl[aá]ra/i);
 });
 
 test('portabilidad: otra instancia no arrastra nada del caso de videojuegos', async () => {

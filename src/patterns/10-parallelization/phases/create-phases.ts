@@ -1,6 +1,6 @@
 import { model as defaultModel } from '../../../helpers/index.js';
 import type { PhaseContext } from './context.js';
-import { integrate, type Finding } from './integrate.js';
+import { integrate, type Finding, type IntegrateExtras } from './integrate.js';
 import { plan } from './plan.js';
 import { runWorker, type WorkerTask } from './run-worker.js';
 
@@ -28,6 +28,7 @@ export function createPhases(config: PhasesConfig) {
   // Falla al crearse, no a mitad de una corrida.
   assertPositiveInteger('limits.maxTasks', config.limits.maxTasks);
   assertPositiveInteger('limits.workerSteps', config.limits.workerSteps);
+  assertPositiveInteger('limits.workerTimeoutMs', config.limits.workerTimeoutMs);
   if (config.subjects.length === 0) {
     throw new RangeError('subjects debe declarar al menos un eje de descomposición');
   }
@@ -36,7 +37,8 @@ export function createPhases(config: PhasesConfig) {
 
   return {
     plan: (request: string) => plan(ctx, request),
-    runWorker: (task: WorkerTask) => runWorker(ctx, task),
-    integrate: (request: string, findings: Finding[]) => integrate(ctx, request, findings),
+    runWorker: (task: WorkerTask, signal?: AbortSignal) => runWorker(ctx, task, signal),
+    integrate: (request: string, findings: Finding[], extras?: IntegrateExtras) =>
+      integrate(ctx, request, findings, extras),
   };
 }

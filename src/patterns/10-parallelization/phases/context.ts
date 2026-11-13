@@ -20,6 +20,8 @@ export type PhasePrompts = {
 export type PhaseLimits = {
   maxTasks: number;
   workerSteps: number;
+  /** Techo de tiempo por worker en el fan-out. */
+  workerTimeoutMs: number;
 };
 
 export type PhaseContext = {
