@@ -11,106 +11,66 @@
  * condición que decide si hay que preguntar.
  */
 
-import {
-  generateText,
-  stepCountIs,
-  type ModelMessage,
-  type ToolApprovalResponse,
-} from 'ai';
-
 import { createTracer, model } from '../../helpers/index.js';
 import { trace } from 'node:console';
-import { TOOL_APPROVAL } from './approval/tool-approval.js';
+import { buildToolApproval } from './approval/tool-approval.js';
 import { SUPPORT_INSTRUCTIONS } from './data/instructions.js';
-import { REFUND_WINDOW_DAYS } from './data/purchases.js';
+import { PURCHASES, REFUND_WINDOW_DAYS } from './data/purchases.js';
 import { INBOX } from './data/tickets.js';
-import { APPROVALS, LEDGER } from './ledger/ledger.js';
-import { closeTerminal, review } from './review/terminal-review.js';
-import { TOOLS } from './tools/refund-tools.js';
+import { createLedger } from './ledger/ledger.js';
+import { runHitl } from './loop/run-hitl.js';
+import { terminalReviewer } from './review/terminal-review.js';
+import { buildRefundTools } from './tools/refund-tools.js';
 
 // ---------------------------------------------------------------------------
-// EL BUCLE — cada gate parte el trabajo en dos llamadas al modelo
+// CONFIGURACIÓN DE LA INSTANCIA — el núcleo exige los valores, aquí se definen
 // ---------------------------------------------------------------------------
 
-const MAX_ROUNDS = 6; // Este lo usaremos como circuit breaker manual.
+/** La política NO decide: solo marca qué necesita una firma humana. */
+const POLICY = {
+  refundWindowDays: REFUND_WINDOW_DAYS, // única fuente de verdad: el mismo valor que muestra el panel
+  maxRefundsPerRun: 5, // techo agregado: cantidad por corrida
+  maxRefundUSDPerRun: 200, // techo agregado: monto por corrida
+};
+
+// MAX_ROUNDS del docente: lo usaremos como circuit breaker manual.
+const LIMITS = { maxRounds: 6, stepsPerRound: 8 };
 
 export async function humanInTheLoopMain() {
   console.log('\n═══ HUMAN-IN-THE-LOOP ═══\n'.blue);
   console.log(
-    `  Los reembolsos dentro de ${REFUND_WINDOW_DAYS} días se ejecutan solos.\n`
+    `  Los reembolsos dentro de ${POLICY.refundWindowDays} días se ejecutan solos.\n`
       .yellow +
       '  Fuera de plazo, el programa se detiene y te pregunta.\n'.yellow
   );
 
   const tracer = createTracer('hitl');
+  // Un libro mayor por corrida (mejora 2): nada se arrastra entre ejecuciones.
+  const ledger = createLedger();
 
-  const messages: ModelMessage[] = [{ role: 'user', content: INBOX }];
-  let finalText = '';
-  let gates = 0; // Los gates son las interrupciones del flujo de ejecución del modelo.
+  const { finalText, gates, hitRoundLimit } = await runHitl({
+    model,
+    tools: buildRefundTools({ purchases: PURCHASES, ledger }),
+    toolApproval: buildToolApproval({ purchases: PURCHASES, ledger, policy: POLICY }),
+    instructions: SUPPORT_INSTRUCTIONS,
+    inbox: INBOX,
+    reviewer: terminalReviewer,
+    ledger,
+    limits: LIMITS,
+    tracer,
+  });
 
-  for (let round = 1; round <= MAX_ROUNDS; round++) {
-    const result = await generateText({
-      model,
-      messages,
-      tools: TOOLS,
-      toolApproval: TOOL_APPROVAL,
-      instructions: SUPPORT_INSTRUCTIONS,
-      stopWhen: stepCountIs(8),
-      onStepEnd: tracer.onStepFinish,
-    });
-
-    // Mantener el historial de mensajes
-    messages.push(...result.responseMessages);
-
-    // Determinar si hay necesidad de intervención humana
-    const requests = result.content.filter(
-      (part) => part.type === 'tool-approval-request' && !part.isAutomatic
-    );
-
-    if (requests.length === 0) {
-      finalText = result.text;
-      break;
-    }
-
-    // Implementar el contador de gates y también el HITL
-    gates++;
-    console.log(`\n --- Gate ${gates} --- `.blue);
-
-    const approvals: ToolApprovalResponse[] = [];
-
-    for (const request of requests) {
-      if (request.type !== 'tool-approval-request') continue;
-
-      const { toolCallId, input } = request.toolCall;
-      const verdict = await review(
-        input as { purchaseId: string; reason: string }
-      );
-
-      if (verdict.approved) {
-        APPROVALS.set(toolCallId, verdict.by);
-      }
-
-      approvals.push({
-        type: 'tool-approval-response',
-        approvalId: request.approvalId,
-        approved: verdict.approved,
-        reason: verdict.note,
-      });
-    }
-
-    messages.push({ role: 'tool', content: approvals });
-  }
-  
   // Limpiar la terminal
-  closeTerminal();
+  terminalReviewer.close?.();
 
   console.log('\n Respuesta:', finalText.green);
 
   console.log('\n  Reembolsos ejecutados:'.blue);
-  if (LEDGER.length === 0) {
+  const effects = ledger.effects();
+  if (effects.length === 0) {
     console.log('     (ninguno)');
   } else {
-    for (const effect of LEDGER) {
+    for (const effect of effects) {
       console.log(`     · ${effect.detail} | aprobó: ${effect.approvedBy}`);
     }
   }
@@ -120,9 +80,21 @@ export async function humanInTheLoopMain() {
       `Tokens: ${tracer.summary().totalTokens}\n`
   );
 
+  // Mejora 3: todas las decisiones (aprobadas, rechazadas y automáticas).
+  console.log('  Decisiones registradas:'.blue);
+  for (const decision of ledger.decisions()) {
+    const mark = decision.approved ? '✓'.green : '✗'.red;
+    console.log(`     ${mark} ${decision.purchaseId} · ${decision.category} · ${decision.by}`);
+  }
+
+  // Mejora 6: el corte por techo de rondas nunca es silencioso.
+  if (hitRoundLimit) {
+    console.log(`\n  ⚠️  Se agotaron las ${LIMITS.maxRounds} rondas sin una respuesta final.\n`.red);
+  }
+
   // Guard: sin tool call no hay gate, y el lab se vería "correcto"
   // sin haber probado nada. Mejor que lo diga en voz alta.
-  if (gates === 0 && LEDGER.length === 0) {
+  if (gates === 0 && effects.length === 0) {
     console.log(
       (
         '  ⚠️  El modelo no llamó a issueRefund ni una vez: resolvió los\n' +
