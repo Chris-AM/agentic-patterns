@@ -100,11 +100,7 @@ export async function humanInTheLoopMain() {
 
     messages.push({ role: 'tool', content: approvals });
   }
-
-  // -----------------------------------------------------------------------------------
-  //! Aquí podemos dejarlo así para mostrar la información y resúmenes de la ejecución.
-  // -----------------------------------------------------------------------------------
-
+  
   // Limpiar la terminal
   closeTerminal();
 
