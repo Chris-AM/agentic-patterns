@@ -5,7 +5,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 
 import { createPhases, type PhasesConfig } from './create-phases.js';
-import { mockModel, sentTo } from './test-model.js';
+import { mockModel, sentTo } from '../../../helpers/test-model.js';
 
 const fakeTool = tool({
   description: 'Busca algo.',
