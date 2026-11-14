@@ -2,14 +2,14 @@ import { createInterface } from 'node:readline/promises';
 
 import { PURCHASES, REFUND_WINDOW_DAYS } from '../data/purchases.js';
 import { TICKETS } from '../data/tickets.js';
+import type { DecisionCategory } from '../ledger/ledger.js';
+import type { Reviewer, ReviewRequest, Verdict } from './reviewer.js';
 
 // ---------------------------------------------------------------------------
 // EL REVISOR — la persona frente a la terminal
 // En la vida real podría ser guardado en una base de datos o en un sistema de gestión de aprobaciones
 // y el AI únicamente delegarlo para intervención humana por ese lado.
 // ---------------------------------------------------------------------------
-
-export type Verdict = { approved: boolean; by: string; note: string };
 
 let terminal: ReturnType<typeof createInterface> | null = null;
 
@@ -28,7 +28,7 @@ export function openTerminal() {
 }
 
 /** Todo lo que necesitas ver antes de decidir. */
-export function renderApprovalPanel(input: { purchaseId: string; reason: string }) {
+export function renderApprovalPanel(input: ReviewRequest) {
   const line = '─'.repeat(64);
   const purchase = PURCHASES.find((item) => item.id === input.purchaseId);
   const ticket = TICKETS.find((item) => item.email === purchase?.email);
@@ -60,10 +60,14 @@ export function renderApprovalPanel(input: { purchaseId: string; reason: string 
 }
 
 /** El proceso se detiene aquí hasta que escribas en el teclado. */
-export async function review(input: {
-  purchaseId: string;
-  reason: string;
-}): Promise<Verdict> {
+const REJECTION_CATEGORIES: DecisionCategory[] = [
+  'fuera-de-politica',
+  'datos-incorrectos',
+  'falta-informacion',
+  'otro',
+];
+
+export async function review(input: ReviewRequest): Promise<Verdict> {
   renderApprovalPanel(input);
 
   const io = openTerminal();
@@ -80,16 +84,37 @@ export async function review(input: {
   }
 
   const approved = choice === '1';
-  const note = await io.question(
-    approved
-      ? '   Nota para el registro (opcional): '
-      : '   Motivo del rechazo (para el agente): '
-  );
+
+  if (approved) {
+    const note = await io.question('   Nota interna para el registro (opcional): ');
+    return {
+      approved,
+      by: 'humano:consola',
+      category: 'aprobado',
+      internalNote: note.trim(),
+      customerMessage: '',
+    };
+  }
+
+  // Categoría estructurada: lo que se puede medir (mejora 3).
+  let index = -1;
+  while (!(index >= 0 && index < REJECTION_CATEGORIES.length)) {
+    const answer = await io.question(
+      `   Categoría [${REJECTION_CATEGORIES.map((c, i) => `${i + 1}=${c}`).join(', ')}]: `
+    );
+    index = Number(answer.trim()) - 1;
+  }
+
+  // Nota interna y mensaje al cliente van separados: la nota nunca sale.
+  const internalNote = await io.question('   Nota interna (solo registro, no llega al cliente): ');
+  const customerMessage = await io.question('   Mensaje para el cliente (el agente lo usará): ');
 
   return {
-    approved: approved ?? false,
+    approved,
     by: 'humano:consola',
-    note: note.trim() || (approved ? 'Aprobado sin comentarios' : 'Rechazado'),
+    category: REJECTION_CATEGORIES[index]!,
+    internalNote: internalNote.trim(),
+    customerMessage: customerMessage.trim() || 'La solicitud no fue aprobada.',
   };
 }
 
@@ -101,3 +126,6 @@ export function closeTerminal() {
   terminal?.close();
   terminal = null;
 }
+
+/** La implementación de terminal del contrato `Reviewer`. */
+export const terminalReviewer: Reviewer = { review, close: closeTerminal };
